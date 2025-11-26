@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Group Missions - Select Table</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .navbar {
+            background: rgba(0,0,0,0.2);
+            padding: 15px 20px;
+            border-bottom: 3px solid rgba(255,255,255,0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .navbar-left {
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .navbar-right {
+            display: flex;
+            gap: 10px;
+        }
+        .nav-btn {
+            color: white;
+            text-decoration: none;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 15px;
+            border-radius: 5px;
+            transition: background 0.3s;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .nav-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 40px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        h2 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 10px;
+            color: #555;
+            font-weight: bold;
+        }
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .messages {
+            background: #ffcdd2;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c62828;
+        }
+        .messages li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="navbar">
+    <div class="navbar-left">🎮 Mission Game</div>
+    <div class="navbar-right">
+        <a href="{{ url_for('index') }}" class="nav-btn">📋 Missions</a>
+        <a href="{{ url_for('secret_talent') }}" class="nav-btn">🎭 Secret Talent</a>
+        <a href="{{ url_for('group_missions') }}" class="nav-btn active">👥 Group Missions</a>
+        <a href="{{ url_for('tshirt_voting') }}" class="nav-btn">👕 T-Shirt Vote</a>
+    </div>
+</div>
+
+<div class="container">
+    <h2>👥 Group Missions</h2>
+
+    {% if not name %}
+    <div class="messages" style="background: #ffcdd2; color: #c62828; border-left-color: #c62828; margin-bottom: 20px;">
+        ⚠️ Please select your name first from the Missions page
+    </div>
+    <div style="text-align: center; margin-top: 30px;">
+        <a href="{{ url_for('index') }}" style="display: inline-block; color: white; text-decoration: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 12px 30px; border-radius: 5px; font-weight: bold;">Go to Missions</a>
+    </div>
+    {% else %}
+    <form method="POST" action="{{ url_for('group_missions') }}">
+        <input type="hidden" name="name" value="{{ name }}">
+        
+        <div class="form-group">
+            <label for="tableSelect">Select Your Table:</label>
+            <select id="tableSelect" name="table" required>
+                <option value="">-- Choose your table --</option>
+                {% for table in tables %}
+                <option value="{{ table }}" {% if table == saved_table %}selected{% endif %}>{{ table }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <button type="submit">Continue</button>
+    </form>
+
+    <div style="text-align: center; margin-top: 30px; padding-top: 30px; border-top: 2px solid rgba(255,255,255,0.3);">
+        <a href="{{ url_for('restart') }}" style="display: inline-block; color: white; text-decoration: none; background: linear-gradient(135deg, #ff6b6b 0%, #ff8787 100%); padding: 12px 30px; border-radius: 5px; font-weight: bold; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">🔄 Restart (Change Player)</a>
+    </div>
+    {% endif %}
+</div>
+
+</body>
+</html>

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Group Missions</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+}
+.navbar {
+    background: rgba(0,0,0,0.2);
+    padding: 15px 20px;
+    border-bottom: 3px solid rgba(255,255,255,0.3);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.navbar-left {
+    color: white;
+    font-size: 20px;
+    font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+}
+.navbar-right {
+    display: flex;
+    gap: 10px;
+}
+.nav-btn {
+    color: white;
+    text-decoration: none;
+    background: rgba(255,255,255,0.2);
+    padding: 8px 15px;
+    border-radius: 5px;
+    transition: background 0.3s;
+    font-size: 14px;
+    font-weight: bold;
+}
+.nav-btn:hover {
+    background: rgba(255,255,255,0.3);
+}
+.container {
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 20px;
+}
+h2 {
+    color: white;
+    text-align: center;
+    margin-bottom: 30px;
+    font-size: 28px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+}
+.table-info {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    margin-bottom: 25px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+.table-name {
+    font-size: 24px;
+    font-weight: bold;
+    color: #667eea;
+}
+.mission-box {
+    background: white;
+    border: 2px solid #ddd;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.mission-box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+}
+.mission-box h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.points-label {
+    font-weight: bold;
+    color: #667eea;
+    background: #f0f0ff;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 16px;
+}
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    color: #555;
+    font-weight: 500;
+}
+.checkbox-label input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: #667eea;
+}
+.messages {
+    background: #c8e6c9;
+    color: #2e7d32;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    border-left: 4px solid #2e7d32;
+}
+.messages li {
+    margin: 5px 0;
+}
+button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 14px 30px;
+    font-size: 16px;
+    font-weight: bold;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: transform 0.2s;
+    width: 100%;
+    margin-bottom: 20px;
+}
+button:hover {
+    transform: translateY(-2px);
+}
+button:active {
+    transform: translateY(0);
+}
+.home-button {
+    text-align: center;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 2px solid #eee;
+}
+.home-button a {
+    display: inline-block;
+    color: white;
+    text-decoration: none;
+    background: linear-gradient(135deg, #ff6b6b 0%, #ff8787 100%);
+    padding: 12px 30px;
+    border-radius: 5px;
+    font-weight: bold;
+    transition: transform 0.2s;
+}
+.home-button a:hover {
+    transform: translateY(-2px);
+}
+</style>
+</head>
+<body>
+
+<div class="navbar">
+    <div class="navbar-left">🎮 Mission Game</div>
+    <div class="navbar-right">
+        <a href="{{ url_for('index', name=name) }}" class="nav-btn">📋 Missions</a>
+        <a href="{{ url_for('secret_talent', name=name) }}" class="nav-btn">🎭 Secret Talent</a>
+        <a href="{{ url_for('group_missions', name=name) }}" class="nav-btn active">👥 Group Missions</a>
+        <a href="{{ url_for('tshirt_voting', name=name) }}" class="nav-btn">👕 T-Shirt Vote</a>
+    </div>
+</div>
+
+<div class="container">
+    <h2>👥 Group Missions - {{ table }}</h2>
+
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <div class="messages">
+                <ul style="margin: 0; padding-left: 20px;">
+                    {% for message in messages %}
+                        <li>✅ {{ message }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="table-info">
+        <div style="margin-bottom: 10px; color: #666;">You are at</div>
+        <div class="table-name">{{ table }}</div>
+        <div style="margin-top: 10px; color: #666; font-size: 14px;">Playing as: <strong>{{ name }}</strong></div>
+        <a href="{{ url_for('change_table') }}" style="display: inline-block; margin-top: 15px; color: #667eea; text-decoration: none; font-size: 14px; padding: 8px 15px; border: 2px solid #667eea; border-radius: 5px; transition: all 0.3s;" onmouseover="this.style.background='#667eea'; this.style.color='white';" onmouseout="this.style.background='transparent'; this.style.color='#667eea';">🔄 Change Table</a>
+    </div>
+
+    <form method="POST" action="{{ url_for('submit_group_missions') }}">
+        <input type="hidden" name="participant" value="{{ name }}">
+        <input type="hidden" name="table" value="{{ table }}">
+
+        {% for mission in missions %}
+        <div class="mission-box">
+            <h3>
+                {{ mission.name }}
+                <span class="points-label">+{{ mission.points }} pts</span>
+            </h3>
+            
+            <label class="checkbox-label">
+                <input type="checkbox" name="completed_{{ mission.id }}" class="groupMissionToggle" data-mission-id="{{ mission.id }}" {% if submissions.get(mission.id, 0) %}checked{% endif %}>
+                Mark as Completed
+            </label>
+        </div>
+        {% endfor %}
+
+        <button type="submit">💾 Save Progress</button>
+    </form>
+
+    <div class="home-button">
+        <a href="{{ url_for('restart') }}" style="display: inline-block; color: white; text-decoration: none; background: linear-gradient(135deg, #ff6b6b 0%, #ff8787 100%); padding: 12px 30px; border-radius: 5px; font-weight: bold; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">🔄 Restart (Change Player)</a>
+    </div>
+</div>
+
+<script>
+const participantName = "{{ name }}";
+const tableName = "{{ table }}";
+
+function autoSaveGroupMission(missionId, completed) {
+    fetch('/autosave_group_mission', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            participant: participantName,
+            table: tableName,
+            mission_id: missionId,
+            completed: completed
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if(data.success) {
+            showSaveIndicator(missionId, true);
+        } else {
+            showSaveIndicator(missionId, false);
+        }
+    })
+    .catch(error => {
+        console.error('Auto-save error:', error);
+        showSaveIndicator(missionId, false);
+    });
+}
+
+function showSaveIndicator(missionId, success) {
+    const checkbox = document.querySelector(`input[data-mission-id="${missionId}"]`);
+    const missionBox = checkbox.closest('.mission-box');
+    
+    // Remove existing indicator
+    const existing = missionBox.querySelector('.save-indicator');
+    if(existing) existing.remove();
+    
+    // Add new indicator
+    const indicator = document.createElement('span');
+    indicator.className = 'save-indicator';
+    indicator.style.cssText = 'margin-left: 10px; font-size: 12px; padding: 3px 8px; border-radius: 3px;';
+    
+    if(success) {
+        indicator.textContent = '✓ Saved';
+        indicator.style.background = '#c8e6c9';
+        indicator.style.color = '#2e7d32';
+    } else {
+        indicator.textContent = '✗ Error';
+        indicator.style.background = '#ffcdd2';
+        indicator.style.color = '#c62828';
+    }
+    
+    missionBox.querySelector('h3').appendChild(indicator);
+    
+    // Remove indicator after 2 seconds
+    setTimeout(() => indicator.remove(), 2000);
+}
+
+// Attach event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.groupMissionToggle').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const missionId = parseInt(this.dataset.missionId);
+            autoSaveGroupMission(missionId, this.checked);
+        });
+    });
+});
+</script>
+
+</body>
+</html>

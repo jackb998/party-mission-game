@@ -1,0 +1,9 @@
+
+body { font-family: Arial, sans-serif; background:#f7f7f7; color:#222; }
+.container { max-width:900px; margin:40px auto; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+h1 { margin-top:0; }
+table { width:100%; border-collapse:collapse; margin-top:10px; }
+table, th, td { border:1px solid #ddd; }
+th, td { padding:8px; text-align:left; }
+button { padding:8px 12px; }
+.flashes { color:red; }

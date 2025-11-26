@@ -1,0 +1,37 @@
+[
+  {
+    "table": "Table 1",
+    "missions": [
+      {"id": 1, "name": "Take a creative group selfie with all members making a funny face", "points": 5},
+      {"id": 2, "name": "Compose a 4-line poem about the Christmas dinner and recite it together", "points": 10}
+    ]
+  },
+  {
+    "table": "Table 2",
+    "missions": [
+      {"id": 3, "name": "Build a human pyramid for a photo (safe and small)", "points": 5},
+      {"id": 4, "name": "Find a colleague from another table and include them in a team photo", "points": 10}
+    ]
+  },
+  {
+    "table": "Table 3",
+    "missions": [
+      {"id": 5, "name": "Create a mini 'table cheer' and perform it", "points": 5},
+      {"id": 6, "name": "Make a paper chain with each member writing one positive trait on it", "points": 10}
+    ]
+  },
+  {
+    "table": "Table 4",
+    "missions": [
+      {"id": 7, "name": "Solve a short Christmas riddle together (prepared by organizers)", "points": 5},
+      {"id": 8, "name": "Take a group photo holding 3 hidden objects found in the room", "points": 10}
+    ]
+  },
+  {
+    "table": "Table 5",
+    "missions": [
+      {"id": 9, "name": "Create a mini skit (30 sec) about 'ugly sweaters' and perform it", "points": 5},
+      {"id": 10, "name": "Find 3 colleagues from other tables and take a funny group photo together", "points": 10}
+    ]
+  }
+]

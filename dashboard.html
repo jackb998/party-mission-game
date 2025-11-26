@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Admin Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .navbar-left {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .navbar-right a {
+            color: white;
+            text-decoration: none;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 15px;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+        .navbar-right a:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        h2 {
+            color: #333;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        .participant-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 5px solid #667eea;
+        }
+        .participant-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .participant-name {
+            font-size: 22px;
+            font-weight: bold;
+            color: #333;
+        }
+        .total-score {
+            font-size: 20px;
+            color: #667eea;
+            font-weight: bold;
+            background: #f0f0ff;
+            padding: 10px 20px;
+            border-radius: 5px;
+        }
+        .missions-section {
+            margin-bottom: 20px;
+        }
+        .missions-section h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        .mission-row {
+            background: #f9f9f9;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 3px solid #ddd;
+        }
+        .mission-row.completed {
+            border-left-color: #4caf50;
+            background: #f1f8f4;
+        }
+        .mission-row.incomplete {
+            border-left-color: #ff9800;
+            background: #fff3f0;
+        }
+        .mission-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .mission-status {
+            font-size: 12px;
+            color: #666;
+        }
+        .points-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .talent-guesses {
+            background: #f0f0ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        .talent-guesses h4 {
+            margin: 0 0 10px 0;
+            color: #667eea;
+        }
+        .guess-item {
+            background: white;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            border-left: 3px solid #ddd;
+        }
+        .guess-item.correct {
+            border-left-color: #4caf50;
+            background: #f1f8f4;
+        }
+        .guess-item.incorrect {
+            border-left-color: #f44336;
+            background: #ffebee;
+        }
+        .file-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .file-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+<div class="navbar">
+    <div class="navbar-left">📊 Admin Dashboard</div>
+    <div class="navbar-right" style="display: flex; gap: 10px;">
+        <a href="{{ url_for('dashboard') }}">📊 Full Dashboard</a>
+        <a href="{{ url_for('leaderboard') }}">🏆 Leaderboard</a>
+        <a href="{{ url_for('logout') }}">🚪 Logout</a>
+    </div>
+</div>
+
+<div class="container">
+    <h2>📋 Game Results - All Participants</h2>
+
+    {% for participant, data in participant_data.items() | sort %}
+    <div class="participant-card">
+        <div class="participant-header">
+            <div class="participant-name">👤 {{ participant }}</div>
+            <div style="display: flex; gap: 15px;">
+                <div style="text-align: center;">
+                    <div style="font-size: 12px; color: #666;">Individual</div>
+                    <div class="total-score" style="background: #fff0f0; color: #ff6b6b; margin: 0;">{{ data.individual_score }} pts</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 12px; color: #666;">Group</div>
+                    <div class="total-score" style="background: #f0f0ff; color: #667eea; margin: 0;">{{ data.group_score }} pts</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 12px; color: #666;">Total</div>
+                    <div class="total-score" style="background: #f0fff0; color: #4caf50; margin: 0;">{{ data.total_score }} pts</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Missions -->
+        <div class="missions-section">
+            <h4>🎯 Missions</h4>
+            {% for mission_id, mission_info in data.missions.items() | sort %}
+            <div class="mission-row {% if mission_info.filename != 'NOT COMPLETED' %}completed{% else %}incomplete{% endif %}">
+                <div class="mission-name">
+                    {{ mission_info.mission_name }}
+                    <span class="points-badge">+{{ mission_info.points }} pts</span>
+                </div>
+                <div class="mission-status">
+                    {% if mission_info.filename == 'NOT COMPLETED' %}
+                        ❌ Not Completed
+                    {% elif mission_info.filename == 'COMPLETED' %}
+                        ✅ Completed
+                    {% else %}
+                        ✅ Completed with: {{ mission_info.filename }}
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Group Missions -->
+        {% if data.group_missions %}
+        <div class="missions-section">
+            <h4>👥 Group Missions</h4>
+            {% for table, missions_list in data.group_missions.items() | sort %}
+            <div style="margin-bottom: 15px; padding: 12px; background: #f9f9f9; border-radius: 5px; border-left: 3px solid #667eea;">
+                <strong style="color: #667eea; display: block; margin-bottom: 10px;">{{ table }}</strong>
+                {% for mission in missions_list %}
+                <div class="mission-row {% if mission.completed %}completed{% else %}incomplete{% endif %}" style="margin-bottom: 8px;">
+                    <div class="mission-name">
+                        {{ mission.mission_name }}
+                        <span class="points-badge">+{{ mission.points }} pts</span>
+                    </div>
+                    <div class="mission-status">
+                        {% if mission.completed %}✅ Completed{% else %}❌ Not Completed{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Talent Guesses -->
+        {% if data.talent_guesses %}
+        <div class="talent-guesses">
+            <h4>🎭 Secret Talent Guesses</h4>
+            {% for guess in data.talent_guesses %}
+            <div class="guess-item {% if guess.correct %}correct{% else %}incorrect{% endif %}">
+                <strong>Player:</strong> {{ guess.target }} | 
+                <strong>Guessed:</strong> {{ guess.guessed }} | 
+                <strong>Result:</strong> {% if guess.correct %}✅ Correct{% else %}❌ Wrong{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- T-Shirt Votes -->
+        <div class="talent-guesses" style="background: #fff0f5; border-left-color: #ff69b4;">
+            <h4 style="color: #d81b60;">👕 T-Shirt Votes</h4>
+            <div style="font-size: 20px; font-weight: bold; color: #d81b60; text-align: center; padding: 15px; background: white; border-radius: 5px;">
+                {{ data.tshirt_votes_received }} vote{{ 's' if data.tshirt_votes_received != 1 else '' }}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+</div>
+
+</body>
+</html>
