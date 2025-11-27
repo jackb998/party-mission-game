@@ -82,11 +82,25 @@
         .messages li {
             margin: 5px 0;
         }
-        .demo-text {
+        .home-link {
+            display: block;
             text-align: center;
-            margin-top: 20px;
-            color: #999;
-            font-size: 12px;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .home-link a {
+            display: inline-block;
+            color: white;
+            text-decoration: none;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8787 100%);
+            padding: 10px 25px;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        .home-link a:hover {
+            transform: translateY(-2px);
         }
     </style>
 </head>
@@ -121,6 +135,9 @@
         <button type="submit">Login</button>
     </form>
 
+    <div class="home-link">
+        <a href="{{ url_for('index') }}">🏠 Back to Player Selection</a>
+    </div>
 </div>
 
 </body>

@@ -141,6 +141,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             guesser TEXT,
             target TEXT,
+            guessed_person TEXT,
             guessed_talent TEXT,
             correct INTEGER,
             timestamp TEXT
@@ -480,18 +481,18 @@ def secret_talent():
             # Trova il player nella lista filtrata
             player_data = next((p for p in players_with_talent if p['id'] == player_id), None)
             if player_data:
-                player_name = player_data['name']
+                player_name = player_data['name']  # Chi ha veramente quel talento
                 talent = player_data['talent']
                 correct = 1 if guessed_person == player_name else 0
-                c.execute("INSERT INTO talent_guesses (guesser,target,guessed_talent,correct,timestamp) VALUES (?,?,?,?,?)",
-                          (guesser, player_name, talent, correct, datetime.datetime.now().isoformat()))
+                c.execute("INSERT INTO talent_guesses (guesser, target, guessed_person, guessed_talent, correct, timestamp) VALUES (?,?,?,?,?,?)",
+                          (guesser, player_name, guessed_person, talent, correct, datetime.datetime.now().isoformat()))
                 conn.commit()
                 flash("Your guess has been recorded!")
         conn.close()
         return redirect(url_for('secret_talent', name=guesser))
 
-    c.execute("SELECT target, guessed_talent FROM talent_guesses WHERE guesser=?", (name,))
-    previous_guesses = {row[0]: row[1] for row in c.fetchall()}
+    c.execute("SELECT guessed_talent, guessed_person, correct FROM talent_guesses WHERE guesser=?", (name,))
+    previous_guesses = [{'talent': row[0], 'guessed_person': row[1], 'correct': row[2]} for row in c.fetchall()]
     conn.close()
     saved_player = session.get('selected_player', '')
     print(f"DEBUG secret_talent: name={name}, saved_player={saved_player}")
@@ -544,7 +545,7 @@ def dashboard():
     c.execute("SELECT participant, mission_id, filename, points FROM submissions")
     submissions = c.fetchall()
     
-    c.execute("SELECT guesser, target, guessed_talent, correct, timestamp FROM talent_guesses ORDER BY timestamp")
+    c.execute("SELECT guesser, target, guessed_person, guessed_talent, correct, timestamp FROM talent_guesses ORDER BY timestamp")
     talent_guesses = c.fetchall()
     
     # Include riddle_answer nella query
@@ -563,10 +564,12 @@ def dashboard():
             'total_score': 0,
             'individual_score': 0,
             'group_score': 0,
+            'talent_score': 0,
             'missions': {},
             'group_missions': {},
             'talent_guesses': [],
-            'tshirt_votes_received': 0
+            'tshirt_votes_received': 0,
+            'voted_for': None  # Chi ha votato questo giocatore
         }
     
     # Process individual missions
@@ -627,23 +630,116 @@ def dashboard():
                 'has_riddle': has_riddle
             })
     
+    # Process talent guesses - 15 punti per ogni guess corretto
+    TALENT_POINTS = 15
     for guess in talent_guesses:
-        guesser, target, guessed_talent, correct, timestamp = guess
+        guesser, target, guessed_person, guessed_talent, correct, timestamp = guess
         if guesser in participant_data:
             participant_data[guesser]['talent_guesses'].append({
-                'target': target,
-                'guessed': guessed_talent,
+                'target': target,  # Chi ha veramente quel talento
+                'guessed_person': guessed_person,  # Chi il guesser pensa sia
+                'talent': guessed_talent,
                 'correct': correct,
                 'timestamp': timestamp
             })
+            # Aggiungi punti se il guess è corretto
+            if correct:
+                participant_data[guesser]['talent_score'] += TALENT_POINTS
+                participant_data[guesser]['total_score'] += TALENT_POINTS
     
     # Process T-Shirt votes
     for vote in tshirt_votes:
         voter, voted_for, timestamp = vote
+        # Salva per chi ha votato questo giocatore
+        if voter in participant_data:
+            participant_data[voter]['voted_for'] = voted_for
+        # Incrementa i voti ricevuti
         if voted_for in participant_data:
             participant_data[voted_for]['tshirt_votes_received'] += 1
     
     return render_template('dashboard.html', participant_data=participant_data, missions=missions, players=PLAYERS)
+
+# ==================== ADMIN ERASE ROUTES ====================
+
+@app.route('/admin/erase_all/<participant>')
+def erase_all(participant):
+    """Cancella tutti i dati di un partecipante"""
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute("DELETE FROM submissions WHERE participant=?", (participant,))
+    c.execute("DELETE FROM group_submissions WHERE participant=?", (participant,))
+    c.execute("DELETE FROM talent_guesses WHERE guesser=?", (participant,))
+    c.execute("DELETE FROM tshirt_votes WHERE voter=?", (participant,))
+    conn.commit()
+    conn.close()
+    
+    flash(f"All data for {participant} has been erased!")
+    return redirect(url_for('dashboard'))
+
+@app.route('/admin/erase_individual/<participant>')
+def erase_individual(participant):
+    """Cancella le missioni individuali di un partecipante"""
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute("DELETE FROM submissions WHERE participant=?", (participant,))
+    conn.commit()
+    conn.close()
+    
+    flash(f"Individual missions for {participant} have been erased!")
+    return redirect(url_for('dashboard'))
+
+@app.route('/admin/erase_group/<participant>')
+def erase_group(participant):
+    """Cancella le missioni di gruppo di un partecipante"""
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute("DELETE FROM group_submissions WHERE participant=?", (participant,))
+    conn.commit()
+    conn.close()
+    
+    flash(f"Group missions for {participant} have been erased!")
+    return redirect(url_for('dashboard'))
+
+@app.route('/admin/erase_talent/<participant>')
+def erase_talent(participant):
+    """Cancella i guess del secret talent di un partecipante"""
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute("DELETE FROM talent_guesses WHERE guesser=?", (participant,))
+    conn.commit()
+    conn.close()
+    
+    flash(f"Secret talent guesses for {participant} have been erased!")
+    return redirect(url_for('dashboard'))
+
+@app.route('/admin/erase_vote/<participant>')
+def erase_vote(participant):
+    """Cancella il voto t-shirt di un partecipante"""
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute("DELETE FROM tshirt_votes WHERE voter=?", (participant,))
+    conn.commit()
+    conn.close()
+    
+    flash(f"T-shirt vote by {participant} has been erased!")
+    return redirect(url_for('dashboard'))
+
+# ==================== END ADMIN ERASE ROUTES ====================
 
 @app.route('/leaderboard')
 def leaderboard():
@@ -667,6 +763,10 @@ def leaderboard():
     c.execute("SELECT participant, table_name, mission_id, completed, riddle_answer FROM group_submissions")
     group_submissions = c.fetchall()
     
+    # Get talent guesses
+    c.execute("SELECT guesser, correct FROM talent_guesses")
+    talent_guesses = c.fetchall()
+    
     # Get tshirt votes
     c.execute("SELECT voted_for, COUNT(*) as votes FROM tshirt_votes GROUP BY voted_for ORDER BY votes DESC")
     tshirt_results = c.fetchall()
@@ -674,9 +774,10 @@ def leaderboard():
     conn.close()
     
     # Calculate scores per participant
+    TALENT_POINTS = 15
     scores = {}
     for participant in participants:
-        scores[participant] = {'individual': 0, 'group': 0, 'total': 0}
+        scores[participant] = {'individual': 0, 'group': 0, 'talent': 0, 'total': 0}
     
     # Individual scores
     for sub in submissions:
@@ -705,9 +806,15 @@ def leaderboard():
                                 scores[participant]['group'] += points
                             break
     
+    # Talent scores - 15 punti per ogni guess corretto
+    for guess in talent_guesses:
+        guesser, correct = guess
+        if guesser in scores and correct:
+            scores[guesser]['talent'] += TALENT_POINTS
+    
     # Calculate totals
     for participant in scores:
-        scores[participant]['total'] = scores[participant]['individual'] + scores[participant]['group']
+        scores[participant]['total'] = scores[participant]['individual'] + scores[participant]['group'] + scores[participant]['talent']
     
     # Sort by total score descending
     sorted_scores = sorted(scores.items(), key=lambda x: x[1]['total'], reverse=True)

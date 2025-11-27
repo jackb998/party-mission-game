@@ -237,6 +237,7 @@
                 <th>Player</th>
                 <th>Individual</th>
                 <th>Group</th>
+                <th>Talent</th>
                 <th>Total</th>
             </tr>
         </thead>
@@ -257,6 +258,7 @@
                 <td><strong>{{ player }}</strong></td>
                 <td><span class="score-badge score-individual">{{ scores['individual'] }}</span></td>
                 <td><span class="score-badge score-group">{{ scores['group'] }}</span></td>
+                <td><span class="score-badge" style="background: linear-gradient(135deg, #ff9800 0%, #ffc107 100%);">{{ scores['talent'] }}</span></td>
                 <td><span class="score-badge score-total">{{ scores['total'] }}</span></td>
             </tr>
             {% endfor %}

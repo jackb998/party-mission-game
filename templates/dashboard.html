@@ -23,6 +23,10 @@
             font-size: 24px;
             font-weight: bold;
         }
+        .navbar-right {
+            display: flex;
+            gap: 10px;
+        }
         .navbar-right a {
             color: white;
             text-decoration: none;
@@ -45,44 +49,113 @@
             padding-bottom: 10px;
             margin-top: 30px;
         }
+        
+        /* Search Filter */
+        .search-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .search-input {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .search-stats {
+            margin-top: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        /* Collapsible Cards */
         .participant-card {
             background: white;
             border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             border-left: 5px solid #667eea;
+            overflow: hidden;
         }
         .participant-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            padding: 15px 20px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .participant-header:hover {
+            background: #f9f9f9;
         }
         .participant-name {
-            font-size: 22px;
+            font-size: 18px;
             font-weight: bold;
             color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-        .total-score {
+        .expand-icon {
             font-size: 20px;
+            transition: transform 0.3s;
             color: #667eea;
-            font-weight: bold;
-            background: #f0f0ff;
-            padding: 10px 20px;
-            border-radius: 5px;
         }
+        .participant-card.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+        .scores-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .score-box {
+            text-align: center;
+            padding: 5px 12px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        .score-individual { background: #fff0f0; color: #ff6b6b; }
+        .score-group { background: #f0f0ff; color: #667eea; }
+        .score-talent { background: #fff5e6; color: #ff9800; }
+        .score-total { background: #f0fff0; color: #4caf50; font-weight: bold; }
+        
+        /* Collapsible Content */
+        .participant-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease-out;
+            border-top: 1px solid #eee;
+        }
+        .participant-card.expanded .participant-details {
+            max-height: 5000px;
+        }
+        .details-content {
+            padding: 20px;
+        }
+        
+        /* Mission Sections */
         .missions-section {
             margin-bottom: 20px;
         }
         .missions-section h4 {
             color: #667eea;
             margin-bottom: 10px;
+            font-size: 16px;
         }
         .mission-row {
             background: #f9f9f9;
             padding: 12px;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             border-radius: 5px;
             border-left: 3px solid #ddd;
         }
@@ -98,6 +171,7 @@
             font-weight: bold;
             color: #333;
             margin-bottom: 5px;
+            font-size: 14px;
         }
         .mission-status {
             font-size: 12px;
@@ -107,11 +181,13 @@
             display: inline-block;
             background: #667eea;
             color: white;
-            padding: 3px 8px;
+            padding: 2px 6px;
             border-radius: 3px;
-            font-size: 12px;
-            margin-left: 10px;
+            font-size: 11px;
+            margin-left: 8px;
         }
+        
+        /* Talent Guesses */
         .talent-guesses {
             background: #f0f0ff;
             padding: 15px;
@@ -121,6 +197,7 @@
         .talent-guesses h4 {
             margin: 0 0 10px 0;
             color: #667eea;
+            font-size: 16px;
         }
         .guess-item {
             background: white;
@@ -128,6 +205,7 @@
             margin-bottom: 8px;
             border-radius: 4px;
             border-left: 3px solid #ddd;
+            font-size: 13px;
         }
         .guess-item.correct {
             border-left-color: #4caf50;
@@ -137,13 +215,32 @@
             border-left-color: #f44336;
             background: #ffebee;
         }
-        .file-link {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: bold;
+        
+        /* T-Shirt Section */
+        .tshirt-section {
+            background: #fff0f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
         }
-        .file-link:hover {
-            text-decoration: underline;
+        .tshirt-section h4 {
+            margin: 0 0 10px 0;
+            color: #d81b60;
+            font-size: 16px;
+        }
+        .votes-count {
+            font-size: 24px;
+            font-weight: bold;
+            color: #d81b60;
+            text-align: center;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+        }
+        
+        /* Hidden class for filtering */
+        .hidden {
+            display: none !important;
         }
     </style>
 </head>
@@ -151,8 +248,9 @@
 
 <div class="navbar">
     <div class="navbar-left">📊 Admin Dashboard</div>
-    <div class="navbar-right" style="display: flex; gap: 10px;">
-        <a href="{{ url_for('dashboard') }}">📊 Full Dashboard</a>
+    <div class="navbar-right">
+        <a href="{{ url_for('index') }}">🏠 Home</a>
+        <a href="{{ url_for('dashboard') }}">📊 Dashboard</a>
         <a href="{{ url_for('leaderboard') }}">🏆 Leaderboard</a>
         <a href="{{ url_for('logout') }}">🚪 Logout</a>
     </div>
@@ -160,109 +258,240 @@
 
 <div class="container">
     <h2>📋 Game Results - All Participants</h2>
+    
+    <!-- Search Filter -->
+    <div class="search-container">
+        <input type="text" id="searchInput" class="search-input" placeholder="🔍 Search players by name..." onkeyup="filterPlayers()">
+        <div class="search-stats">
+            <span id="visibleCount">{{ participant_data|length }}</span> of {{ participant_data|length }} players shown
+            <button onclick="expandAll()" style="margin-left: 15px; padding: 5px 15px; cursor: pointer; border: 1px solid #667eea; background: white; color: #667eea; border-radius: 5px;">📂 Expand All</button>
+            <button onclick="collapseAll()" style="margin-left: 5px; padding: 5px 15px; cursor: pointer; border: 1px solid #667eea; background: white; color: #667eea; border-radius: 5px;">📁 Collapse All</button>
+        </div>
+    </div>
 
     {% for participant, data in participant_data.items() | sort %}
-    <div class="participant-card">
-        <div class="participant-header">
-            <div class="participant-name">👤 {{ participant }}</div>
-            <div style="display: flex; gap: 15px;">
-                <div style="text-align: center;">
-                    <div style="font-size: 12px; color: #666;">Individual</div>
-                    <div class="total-score" style="background: #fff0f0; color: #ff6b6b; margin: 0;">{{ data.individual_score }} pts</div>
+    <div class="participant-card" data-name="{{ participant|lower }}">
+        <div class="participant-header" onclick="toggleCard(this)">
+            <div class="participant-name">
+                <span class="expand-icon">▼</span>
+                👤 {{ participant }}
+            </div>
+            <div class="scores-row">
+                <div class="score-box score-individual">
+                    <div style="font-size: 10px;">Individual</div>
+                    <div style="font-weight: bold;">{{ data.individual_score }}</div>
                 </div>
-                <div style="text-align: center;">
-                    <div style="font-size: 12px; color: #666;">Group</div>
-                    <div class="total-score" style="background: #f0f0ff; color: #667eea; margin: 0;">{{ data.group_score }} pts</div>
+                <div class="score-box score-group">
+                    <div style="font-size: 10px;">Group</div>
+                    <div style="font-weight: bold;">{{ data.group_score }}</div>
                 </div>
-                <div style="text-align: center;">
-                    <div style="font-size: 12px; color: #666;">Total</div>
-                    <div class="total-score" style="background: #f0fff0; color: #4caf50; margin: 0;">{{ data.total_score }} pts</div>
+                <div class="score-box score-talent">
+                    <div style="font-size: 10px;">Talent</div>
+                    <div style="font-weight: bold;">{{ data.talent_score }}</div>
+                </div>
+                <div class="score-box score-total">
+                    <div style="font-size: 10px;">Total</div>
+                    <div>{{ data.total_score }} pts</div>
                 </div>
             </div>
         </div>
-
-        <!-- Missions -->
-        <div class="missions-section">
-            <h4>🎯 Missions</h4>
-            {% for mission_id, mission_info in data.missions.items() | sort %}
-            <div class="mission-row {% if mission_info.filename != 'NOT COMPLETED' %}completed{% else %}incomplete{% endif %}">
-                <div class="mission-name">
-                    {{ mission_info.mission_name }}
-                    <span class="points-badge">+{{ mission_info.points }} pts</span>
-                </div>
-                <div class="mission-status">
-                    {% if mission_info.filename == 'NOT COMPLETED' %}
-                        ❌ Not Completed
-                    {% elif mission_info.filename == 'COMPLETED' %}
-                        ✅ Completed
-                    {% else %}
-                        ✅ Completed with: {{ mission_info.filename }}
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-
-        <!-- Group Missions -->
-        {% if data.group_missions %}
-        <div class="missions-section">
-            <h4>👥 Group Missions</h4>
-            {% for table, missions_list in data.group_missions.items() | sort %}
-            <div style="margin-bottom: 15px; padding: 12px; background: #f9f9f9; border-radius: 5px; border-left: 3px solid #667eea;">
-                <strong style="color: #667eea; display: block; margin-bottom: 10px;">{{ table }}</strong>
-                {% for mission in missions_list %}
-                <div class="mission-row {% if mission.completed %}completed{% else %}incomplete{% endif %}" style="margin-bottom: 8px;">
-                    <div class="mission-name">
-                        {{ mission.mission_name }}
-                        <span class="points-badge">+{{ mission.points }} pts</span>
+        
+        <div class="participant-details">
+            <div class="details-content">
+                <!-- ERASE ALL BUTTON -->
+                <div style="margin-bottom: 20px; padding: 15px; background: #ffebee; border-radius: 8px; border: 1px solid #f44336;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: #c62828; font-weight: bold;">⚠️ Danger Zone</span>
+                        <a href="{{ url_for('erase_all', participant=participant) }}" 
+                           onclick="return confirm('Are you sure you want to erase ALL data for {{ participant }}? This cannot be undone!')"
+                           style="background: #f44336; color: white; padding: 8px 15px; border-radius: 5px; text-decoration: none; font-size: 12px; font-weight: bold;">
+                            🗑️ Erase All Data
+                        </a>
                     </div>
-                    <div class="mission-status">
-                        {% if mission.has_riddle %}
-                            {% if mission.riddle_answer %}
-                                {% if mission.riddle_correct %}
-                                    ✅ Correct Answer: "{{ mission.riddle_answer }}"
-                                {% else %}
-                                    ❌ Wrong Answer: "{{ mission.riddle_answer }}"
-                                {% endif %}
+                </div>
+
+                <!-- Individual Missions -->
+                <div class="missions-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0;">🎯 Individual Missions ({{ data.missions|length }})</h4>
+                        <a href="{{ url_for('erase_individual', participant=participant) }}" 
+                           onclick="return confirm('Erase individual missions for {{ participant }}?')"
+                           style="background: #ff9800; color: white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size: 11px;">
+                            🗑️ Erase
+                        </a>
+                    </div>
+                    {% for mission_id, mission_info in data.missions.items() | sort %}
+                    <div class="mission-row {% if mission_info.filename != 'NOT COMPLETED' %}completed{% else %}incomplete{% endif %}">
+                        <div class="mission-name">
+                            {{ mission_info.mission_name }}
+                            <span class="points-badge">+{{ mission_info.points }} pts</span>
+                        </div>
+                        <div class="mission-status">
+                            {% if mission_info.filename == 'NOT COMPLETED' %}
+                                ❌ Not Completed
+                            {% elif mission_info.filename == 'COMPLETED' %}
+                                ✅ Completed
                             {% else %}
-                                ⏳ No answer submitted
+                                ✅ Completed with: {{ mission_info.filename }}
                             {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Group Missions -->
+                {% if data.group_missions %}
+                <div class="missions-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0;">👥 Group Missions</h4>
+                        <a href="{{ url_for('erase_group', participant=participant) }}" 
+                           onclick="return confirm('Erase group missions for {{ participant }}?')"
+                           style="background: #ff9800; color: white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size: 11px;">
+                            🗑️ Erase
+                        </a>
+                    </div>
+                    {% for table, missions_list in data.group_missions.items() | sort %}
+                    <div style="margin-bottom: 15px; padding: 12px; background: #f9f9f9; border-radius: 5px; border-left: 3px solid #667eea;">
+                        <strong style="color: #667eea; display: block; margin-bottom: 10px;">{{ table }}</strong>
+                        {% for mission in missions_list %}
+                        <div class="mission-row {% if mission.completed and (not mission.has_riddle or mission.riddle_correct) %}completed{% else %}incomplete{% endif %}" style="margin-bottom: 8px;">
+                            <div class="mission-name">
+                                {{ mission.mission_name }}
+                                {% if mission.has_riddle %}
+                                    {% if mission.riddle_correct %}
+                                        <span class="points-badge" style="background: #4caf50;">+{{ mission.points }} pts ✓</span>
+                                    {% else %}
+                                        <span class="points-badge" style="background: #f44336;">+0 pts ✗</span>
+                                    {% endif %}
+                                {% else %}
+                                    {% if mission.completed %}
+                                        <span class="points-badge" style="background: #4caf50;">+{{ mission.points }} pts</span>
+                                    {% else %}
+                                        <span class="points-badge">+{{ mission.points }} pts</span>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                            <div class="mission-status">
+                                {% if mission.has_riddle %}
+                                    {% if mission.riddle_answer %}
+                                        {% if mission.riddle_correct %}
+                                            ✅ Correct Answer: "{{ mission.riddle_answer }}"
+                                        {% else %}
+                                            ❌ Wrong Answer: "{{ mission.riddle_answer }}"
+                                        {% endif %}
+                                    {% else %}
+                                        ⏳ No answer submitted
+                                    {% endif %}
+                                {% else %}
+                                    {% if mission.completed %}✅ Completed{% else %}❌ Not Completed{% endif %}
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- Talent Guesses -->
+                {% if data.talent_guesses %}
+                <div class="talent-guesses">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0;">🎭 Secret Talent Guesses ({{ data.talent_guesses|length }})</h4>
+                        <a href="{{ url_for('erase_talent', participant=participant) }}" 
+                           onclick="return confirm('Erase talent guesses for {{ participant }}?')"
+                           style="background: #ff9800; color: white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size: 11px;">
+                            🗑️ Erase
+                        </a>
+                    </div>
+                    {% for guess in data.talent_guesses %}
+                    <div class="guess-item {% if guess.correct %}correct{% else %}incorrect{% endif %}">
+                        <strong>Talent:</strong> {{ guess.talent }}<br>
+                        <strong>Guessed:</strong> {{ guess.guessed_person }} 
+                        {% if guess.correct %}
+                            ✅ Correct (+15 pts)
                         {% else %}
-                            {% if mission.completed %}✅ Completed{% else %}❌ Not Completed{% endif %}
+                            ❌ Wrong (was: {{ guess.target }})
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- T-Shirt Section -->
+                <div class="tshirt-section">
+                    <h4>👕 T-Shirt Votes</h4>
+                    
+                    <!-- Votes Received -->
+                    <div style="background: white; padding: 15px; border-radius: 5px; margin-bottom: 10px;">
+                        <strong>Votes Received:</strong>
+                        <span style="font-size: 20px; font-weight: bold; color: #d81b60; margin-left: 10px;">
+                            {{ data.tshirt_votes_received }}
+                        </span>
+                    </div>
+                    
+                    <!-- Vote Given -->
+                    <div style="background: white; padding: 15px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>Voted for:</strong>
+                            {% if data.voted_for %}
+                                <span style="color: #d81b60; font-weight: bold; margin-left: 10px;">{{ data.voted_for }}</span>
+                            {% else %}
+                                <span style="color: #999; margin-left: 10px;">Not voted yet</span>
+                            {% endif %}
+                        </div>
+                        {% if data.voted_for %}
+                        <a href="{{ url_for('erase_vote', participant=participant) }}" 
+                           onclick="return confirm('Erase vote by {{ participant }}?')"
+                           style="background: #ff9800; color: white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size: 11px;">
+                            🗑️ Erase Vote
+                        </a>
                         {% endif %}
                     </div>
                 </div>
-                {% endfor %}
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        <!-- Talent Guesses -->
-        {% if data.talent_guesses %}
-        <div class="talent-guesses">
-            <h4>🎭 Secret Talent Guesses</h4>
-            {% for guess in data.talent_guesses %}
-            <div class="guess-item {% if guess.correct %}correct{% else %}incorrect{% endif %}">
-                <strong>Player:</strong> {{ guess.target }} | 
-                <strong>Guessed:</strong> {{ guess.guessed }} | 
-                <strong>Result:</strong> {% if guess.correct %}✅ Correct{% else %}❌ Wrong{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        <!-- T-Shirt Votes -->
-        <div class="talent-guesses" style="background: #fff0f5; border-left-color: #ff69b4;">
-            <h4 style="color: #d81b60;">👕 T-Shirt Votes</h4>
-            <div style="font-size: 20px; font-weight: bold; color: #d81b60; text-align: center; padding: 15px; background: white; border-radius: 5px;">
-                {{ data.tshirt_votes_received }} vote{{ 's' if data.tshirt_votes_received != 1 else '' }}
             </div>
         </div>
     </div>
     {% endfor %}
 
 </div>
+
+<script>
+function toggleCard(header) {
+    const card = header.closest('.participant-card');
+    card.classList.toggle('expanded');
+}
+
+function filterPlayers() {
+    const searchValue = document.getElementById('searchInput').value.toLowerCase();
+    const cards = document.querySelectorAll('.participant-card');
+    let visibleCount = 0;
+    
+    cards.forEach(card => {
+        const name = card.getAttribute('data-name');
+        if (name.includes(searchValue)) {
+            card.classList.remove('hidden');
+            visibleCount++;
+        } else {
+            card.classList.add('hidden');
+        }
+    });
+    
+    document.getElementById('visibleCount').textContent = visibleCount;
+}
+
+function expandAll() {
+    document.querySelectorAll('.participant-card:not(.hidden)').forEach(card => {
+        card.classList.add('expanded');
+    });
+}
+
+function collapseAll() {
+    document.querySelectorAll('.participant-card').forEach(card => {
+        card.classList.remove('expanded');
+    });
+}
+</script>
 
 </body>
 </html>
