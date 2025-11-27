@@ -205,8 +205,30 @@ button:active {
                 <span class="points-label">+{{ mission.points }} pts</span>
             </h3>
             
+            {% if mission.riddle %}
+            <div class="riddle-section" style="margin: 15px 0;">
+                <button type="button" onclick="toggleRiddle('{{ mission.id }}')" class="riddle-btn" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+                    🎄 Reveal the Riddle
+                </button>
+                <div id="riddle_{{ mission.id }}" style="display: none; margin-top: 15px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; color: white;">
+                    <p style="font-style: italic; font-size: 16px; white-space: pre-line; margin: 0 0 15px 0;">{{ mission.riddle }}</p>
+                    <div style="margin-top: 15px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: bold;">✏️ Your Answer:</label>
+                        <input type="text" 
+                               id="riddle_answer_{{ mission.id }}" 
+                               class="riddle-answer-input"
+                               data-mission-id="{{ mission.id }}"
+                               placeholder="Type your answer here..."
+                               value="{{ submissions.get(mission.id, {}).get('riddle_answer', '') }}"
+                               style="width: 100%; padding: 12px; border: none; border-radius: 5px; font-size: 16px; box-sizing: border-box;">
+                        <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">💡 Don't worry about spelling - we'll check if it's close enough!</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
             <label class="checkbox-label">
-                <input type="checkbox" name="completed_{{ mission.id }}" class="groupMissionToggle" data-mission-id="{{ mission.id }}" {% if submissions.get(mission.id, 0) %}checked{% endif %}>
+                <input type="checkbox" name="completed_{{ mission.id }}" class="groupMissionToggle" data-mission-id="{{ mission.id }}" {% if submissions.get(mission.id, {}).completed or submissions.get(mission.id, {}).get('completed', 0) %}checked{% endif %}>
                 Mark as Completed
             </label>
         </div>
@@ -221,10 +243,23 @@ button:active {
 </div>
 
 <script>
+function toggleRiddle(missionId) {
+    var riddleDiv = document.getElementById('riddle_' + missionId);
+    if (riddleDiv.style.display === 'none') {
+        riddleDiv.style.display = 'block';
+    } else {
+        riddleDiv.style.display = 'none';
+    }
+}
+
 const participantName = "{{ name }}";
 const tableName = "{{ table }}";
 
-function autoSaveGroupMission(missionId, completed) {
+function autoSaveGroupMission(missionId, completed, riddleAnswer) {
+    // Get riddle answer if exists
+    var answerInput = document.getElementById('riddle_answer_' + missionId);
+    var answer = answerInput ? answerInput.value : (riddleAnswer || '');
+    
     fetch('/autosave_group_mission', {
         method: 'POST',
         headers: {
@@ -233,8 +268,9 @@ function autoSaveGroupMission(missionId, completed) {
         body: JSON.stringify({
             participant: participantName,
             table: tableName,
-            mission_id: missionId,
-            completed: completed
+            mission_id: parseInt(missionId),
+            completed: completed,
+            riddle_answer: answer
         })
     })
     .then(response => response.json())
@@ -282,10 +318,28 @@ function showSaveIndicator(missionId, success) {
 
 // Attach event listeners
 document.addEventListener('DOMContentLoaded', () => {
+    // Auto-save on checkbox change
     document.querySelectorAll('.groupMissionToggle').forEach(checkbox => {
         checkbox.addEventListener('change', function() {
-            const missionId = parseInt(this.dataset.missionId);
+            const missionId = this.dataset.missionId;
             autoSaveGroupMission(missionId, this.checked);
+        });
+    });
+    
+    // Auto-save riddle answer on blur (when user leaves the input field)
+    document.querySelectorAll('.riddle-answer-input').forEach(input => {
+        input.addEventListener('blur', function() {
+            const missionId = this.dataset.missionId;
+            const checkbox = document.querySelector(`input.groupMissionToggle[data-mission-id="${missionId}"]`);
+            const completed = checkbox ? checkbox.checked : false;
+            autoSaveGroupMission(missionId, completed, this.value);
+        });
+        
+        // Also save on Enter key
+        input.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                this.blur();
+            }
         });
     });
 });

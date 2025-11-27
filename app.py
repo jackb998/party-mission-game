@@ -56,6 +56,59 @@ PEOPLE, SECRET_TALENTS = load_people()
 PLAYERS = load_players()
 GROUP_MISSIONS = load_group_missions()
 
+def normalize_answer(text):
+    """Normalizza una risposta per il confronto (rimuove spazi extra, punteggiatura, lowercase)"""
+    if not text:
+        return ""
+    import string
+    # Lowercase, rimuovi spazi extra, rimuovi punteggiatura comune
+    text = text.lower().strip()
+    text = ' '.join(text.split())  # Rimuove spazi multipli
+    text = text.translate(str.maketrans('', '', string.punctuation))  # Rimuove punteggiatura
+    # Normalizza accenti comuni
+    replacements = {'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e', 'à': 'a', 'â': 'a', 'î': 'i', 'ï': 'i', 'ô': 'o', 'û': 'u', 'ù': 'u', 'ç': 'c'}
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
+
+def check_riddle_answer(user_answer, correct_answer="A Christmas Tree"):
+    """Verifica se la risposta dell'utente è corretta (fuzzy matching, multilingua)"""
+    user_norm = normalize_answer(user_answer)
+    
+    if not user_norm:
+        return False
+    
+    # Risposte accettate in diverse lingue
+    accepted_answers = [
+        # English
+        "christmas tree", "xmas tree", "a christmas tree", "the christmas tree", "tree",
+        # French
+        "sapin", "sapin de noel", "un sapin", "le sapin", "sapin de noël", "arbre de noel", "arbre de noël",
+        # Italian
+        "albero di natale", "albero", "lalbero di natale",
+        # German
+        "weihnachtsbaum", "tannenbaum",
+        # Spanish
+        "arbol de navidad", "árbol de navidad",
+        # Portuguese
+        "arvore de natal", "árvore de natal"
+    ]
+    
+    # Normalizza tutte le risposte accettate
+    accepted_normalized = [normalize_answer(ans) for ans in accepted_answers]
+    
+    # Match esatto
+    if user_norm in accepted_normalized:
+        return True
+    
+    # Controlla se contiene una parola chiave
+    keywords = ["tree", "sapin", "albero", "baum", "arbol", "arvore", "tannen", "weihnacht", "christmas", "noel", "natal", "natale", "navidad"]
+    for kw in keywords:
+        if kw in user_norm:
+            return True
+    
+    return False
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -100,7 +153,8 @@ def init_db():
             table_name TEXT,
             mission_id INTEGER,
             mission_name TEXT,
-            completed INTEGER DEFAULT 0
+            completed INTEGER DEFAULT 0,
+            riddle_answer TEXT DEFAULT ''
         )
     """)
     c.execute("""
@@ -348,6 +402,7 @@ def autosave_group_mission():
     table = data.get('table', '').strip()
     mission_id = data.get('mission_id')
     completed = data.get('completed', False)
+    riddle_answer = data.get('riddle_answer', '').strip()
     
     if not name or not table or not mission_id:
         return {'success': False, 'error': 'Missing data'}, 400
@@ -361,8 +416,8 @@ def autosave_group_mission():
     row = c.fetchone()
     
     if row:
-        c.execute("UPDATE group_submissions SET completed=? WHERE id=?",
-                  (1 if completed else 0, row[0]))
+        c.execute("UPDATE group_submissions SET completed=?, riddle_answer=? WHERE id=?",
+                  (1 if completed else 0, riddle_answer, row[0]))
     else:
         # Get mission name from GROUP_MISSIONS
         mission_name = ""
@@ -373,8 +428,8 @@ def autosave_group_mission():
                         mission_name = m['name']
                         break
         
-        c.execute("INSERT INTO group_submissions (participant, table_name, mission_id, mission_name, completed) VALUES (?,?,?,?,?)",
-                  (name, table, mission_id, mission_name, 1 if completed else 0))
+        c.execute("INSERT INTO group_submissions (participant, table_name, mission_id, mission_name, completed, riddle_answer) VALUES (?,?,?,?,?,?)",
+                  (name, table, mission_id, mission_name, 1 if completed else 0, riddle_answer))
     
     conn.commit()
     conn.close()
@@ -414,16 +469,20 @@ def secret_talent():
     conn = get_db_conn()
     c = conn.cursor()
     
+    # Filtra solo i player che hanno un talento (non vuoto)
+    players_with_talent = [p for p in PLAYERS if p.get('talent', '').strip()]
+    
     if request.method=='POST':
         guesser = request.form.get('guesser','')
         player_id = int(request.form.get('player_id','0'))
         guessed_person = request.form.get('guessed_person','')
         if guesser and player_id and guessed_person:
-            if player_id > 0 and player_id <= len(PLAYERS):
-                player_data = PLAYERS[player_id-1]
+            # Trova il player nella lista filtrata
+            player_data = next((p for p in players_with_talent if p['id'] == player_id), None)
+            if player_data:
                 player_name = player_data['name']
                 talent = player_data['talent']
-                correct = 1 if guessed_person==player_name else 0
+                correct = 1 if guessed_person == player_name else 0
                 c.execute("INSERT INTO talent_guesses (guesser,target,guessed_talent,correct,timestamp) VALUES (?,?,?,?,?)",
                           (guesser, player_name, talent, correct, datetime.datetime.now().isoformat()))
                 conn.commit()
@@ -431,13 +490,13 @@ def secret_talent():
         conn.close()
         return redirect(url_for('secret_talent', name=guesser))
 
-    players_list = PLAYERS
     c.execute("SELECT target, guessed_talent FROM talent_guesses WHERE guesser=?", (name,))
     previous_guesses = {row[0]: row[1] for row in c.fetchall()}
     conn.close()
     saved_player = session.get('selected_player', '')
     print(f"DEBUG secret_talent: name={name}, saved_player={saved_player}")
-    return render_template('secret_talent.html', name=name, players=players_list, previous_guesses=previous_guesses, saved_player=saved_player)
+    # Passa solo i player con talento al template
+    return render_template('secret_talent.html', name=name, players=players_with_talent, previous_guesses=previous_guesses, saved_player=saved_player)
 
 @app.route('/organizer')
 def organizer():
@@ -488,7 +547,8 @@ def dashboard():
     c.execute("SELECT guesser, target, guessed_talent, correct, timestamp FROM talent_guesses ORDER BY timestamp")
     talent_guesses = c.fetchall()
     
-    c.execute("SELECT participant, table_name, mission_id, mission_name, completed FROM group_submissions")
+    # Include riddle_answer nella query
+    c.execute("SELECT participant, table_name, mission_id, mission_name, completed, riddle_answer FROM group_submissions")
     group_submissions = c.fetchall()
     
     c.execute("SELECT voter, voted_for, timestamp FROM tshirt_votes")
@@ -524,20 +584,36 @@ def dashboard():
     
     # Process group missions
     for gsub in group_submissions:
-        participant, table_name, mission_id, mission_name, completed = gsub
+        participant, table_name, mission_id, mission_name, completed, riddle_answer = gsub
         if participant in participant_data:
-            # Get points from GROUP_MISSIONS
+            # Get mission info from GROUP_MISSIONS
             points = 0
+            has_riddle = False
             for tm in GROUP_MISSIONS:
                 if tm['table'] == table_name:
                     for mission in tm['missions']:
                         if mission['id'] == mission_id:
                             points = mission['points']
+                            has_riddle = 'riddle' in mission
                             break
             
-            if completed:
-                participant_data[participant]['group_score'] += points
-                participant_data[participant]['total_score'] += points
+            # Per missioni con riddle, verifica se la risposta è corretta
+            riddle_correct = None
+            if has_riddle:
+                if riddle_answer:
+                    riddle_correct = check_riddle_answer(riddle_answer)
+                else:
+                    riddle_correct = False
+                
+                # Punti assegnati SOLO se risposta corretta
+                if completed and riddle_correct:
+                    participant_data[participant]['group_score'] += points
+                    participant_data[participant]['total_score'] += points
+            else:
+                # Missioni normali (senza riddle)
+                if completed:
+                    participant_data[participant]['group_score'] += points
+                    participant_data[participant]['total_score'] += points
             
             if table_name not in participant_data[participant]['group_missions']:
                 participant_data[participant]['group_missions'][table_name] = []
@@ -545,7 +621,10 @@ def dashboard():
             participant_data[participant]['group_missions'][table_name].append({
                 'mission_name': mission_name,
                 'points': points,
-                'completed': completed
+                'completed': completed,
+                'riddle_answer': riddle_answer or '',
+                'riddle_correct': riddle_correct,
+                'has_riddle': has_riddle
             })
     
     for guess in talent_guesses:
@@ -584,8 +663,8 @@ def leaderboard():
     c.execute("SELECT participant, mission_id, filename, points FROM submissions")
     submissions = c.fetchall()
     
-    # Get group submissions
-    c.execute("SELECT participant, table_name, mission_id, completed FROM group_submissions")
+    # Get group submissions with riddle_answer
+    c.execute("SELECT participant, table_name, mission_id, completed, riddle_answer FROM group_submissions")
     group_submissions = c.fetchall()
     
     # Get tshirt votes
@@ -607,14 +686,23 @@ def leaderboard():
     
     # Group scores
     for gsub in group_submissions:
-        participant, table_name, mission_id, completed = gsub
+        participant, table_name, mission_id, completed, riddle_answer = gsub
         if participant in scores and completed:
-            # Get points from GROUP_MISSIONS
+            # Get mission info from GROUP_MISSIONS
             for tm in GROUP_MISSIONS:
                 if tm['table'] == table_name:
                     for mission in tm['missions']:
                         if mission['id'] == mission_id:
-                            scores[participant]['group'] += mission['points']
+                            has_riddle = 'riddle' in mission
+                            points = mission['points']
+                            
+                            if has_riddle:
+                                # Punti solo se risposta corretta
+                                if riddle_answer and check_riddle_answer(riddle_answer):
+                                    scores[participant]['group'] += points
+                            else:
+                                # Missioni normali
+                                scores[participant]['group'] += points
                             break
     
     # Calculate totals
@@ -755,17 +843,17 @@ def group_missions():
         c = conn.cursor()
         
         # Get or create group mission submissions
-        c.execute("SELECT mission_id, completed FROM group_submissions WHERE participant=? AND table_name=?", (name, table))
+        c.execute("SELECT mission_id, completed, riddle_answer FROM group_submissions WHERE participant=? AND table_name=?", (name, table))
         rows = c.fetchall()
-        submissions = {row[0]: row[1] for row in rows}
+        submissions = {row[0]: {'completed': row[1], 'riddle_answer': row[2] or ''} for row in rows}
         
         # If no submissions exist, create them
         if not submissions:
             for mission in table_missions:
-                c.execute("INSERT INTO group_submissions (participant, table_name, mission_id, mission_name, completed) VALUES (?,?,?,?,?)",
-                          (name, table, mission['id'], mission['name'], 0))
+                c.execute("INSERT INTO group_submissions (participant, table_name, mission_id, mission_name, completed, riddle_answer) VALUES (?,?,?,?,?,?)",
+                          (name, table, mission['id'], mission['name'], 0, ''))
             conn.commit()
-            submissions = {mission['id']: 0 for mission in table_missions}
+            submissions = {mission['id']: {'completed': 0, 'riddle_answer': ''} for mission in table_missions}
         
         conn.close()
         

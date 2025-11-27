@@ -217,7 +217,19 @@
                         <span class="points-badge">+{{ mission.points }} pts</span>
                     </div>
                     <div class="mission-status">
-                        {% if mission.completed %}✅ Completed{% else %}❌ Not Completed{% endif %}
+                        {% if mission.has_riddle %}
+                            {% if mission.riddle_answer %}
+                                {% if mission.riddle_correct %}
+                                    ✅ Correct Answer: "{{ mission.riddle_answer }}"
+                                {% else %}
+                                    ❌ Wrong Answer: "{{ mission.riddle_answer }}"
+                                {% endif %}
+                            {% else %}
+                                ⏳ No answer submitted
+                            {% endif %}
+                        {% else %}
+                            {% if mission.completed %}✅ Completed{% else %}❌ Not Completed{% endif %}
+                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}

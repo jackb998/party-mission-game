@@ -23,7 +23,7 @@
   {
     "table": "Table 4",
     "missions": [
-      {"id": 7, "name": "Solve a short Christmas riddle together (prepared by organizers)", "points": 5},
+      {"id": 7, "name": "Solve a short Christmas riddle together", "points": 5, "riddle": "I'm full of cheer but never drink,\nI stand tall but never walk,\nI wear lights like jewelry,\nWhat am I?", "answer": "A Christmas Tree! 🎄"},
       {"id": 8, "name": "Take a group photo holding 3 hidden objects found in the room", "points": 10}
     ]
   }
