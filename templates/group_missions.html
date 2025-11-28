@@ -194,7 +194,7 @@ button:active {
         <a href="{{ url_for('change_table') }}" style="display: inline-block; margin-top: 15px; color: #667eea; text-decoration: none; font-size: 14px; padding: 8px 15px; border: 2px solid #667eea; border-radius: 5px; transition: all 0.3s;" onmouseover="this.style.background='#667eea'; this.style.color='white';" onmouseout="this.style.background='transparent'; this.style.color='#667eea';">🔄 Change Table</a>
     </div>
 
-    <form method="POST" action="{{ url_for('submit_group_missions') }}">
+    <form method="POST" action="{{ url_for('submit_group_missions') }}" enctype="multipart/form-data">
         <input type="hidden" name="participant" value="{{ name }}">
         <input type="hidden" name="table" value="{{ table }}">
 
@@ -224,6 +224,23 @@ button:active {
                         <p style="margin-top: 10px; font-size: 12px; opacity: 0.8;">💡 Don't worry about spelling - we'll check if it's close enough!</p>
                     </div>
                 </div>
+            </div>
+            {% endif %}
+            
+            {% set mission_name_lower = mission.name|lower %}
+            {% if 'photo' in mission_name_lower or 'selfie' in mission_name_lower or 'picture' in mission_name_lower or 'snap' in mission_name_lower or 'capture' in mission_name_lower %}
+            <div style="margin: 15px 0; padding: 15px; background: #f0f8ff; border-radius: 8px; border: 2px dashed #667eea;">
+                <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #667eea;">📸 Upload Photo:</label>
+                <input type="file" name="photo_{{ mission.id }}" accept="image/*" style="width: 100%;">
+                {% if submissions.get(mission.id, {}).get('photo_filename') %}
+                    <div style="margin-top: 10px;">
+                        <p style="color: #2e7d32; margin-bottom: 8px;">✅ Photo uploaded!</p>
+                        <a href="{{ url_for('uploaded_file', filename=submissions.get(mission.id, {}).get('photo_filename')) }}" target="_blank">
+                            <img src="{{ url_for('uploaded_file', filename=submissions.get(mission.id, {}).get('photo_filename')) }}" 
+                                 style="max-width: 200px; max-height: 150px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                        </a>
+                    </div>
+                {% endif %}
             </div>
             {% endif %}
             

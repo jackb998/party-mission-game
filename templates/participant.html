@@ -240,12 +240,43 @@ button:active {
                 Mark as Completed
             </label>
 
-            {% if "Take a selfie" in text %}
+            {% set photo_keywords = ['selfie', 'photo', 'picture', 'snap', 'capture', 'photograph'] %}
+            {% set text_lower = text|lower %}
+            {% set is_photo_mission = false %}
+            {% for keyword in photo_keywords %}
+                {% if keyword in text_lower %}
+                    {% set is_photo_mission = true %}
+                {% endif %}
+            {% endfor %}
+            
+            {# Determina se è un selfie specifico con una persona (es. "Take a selfie with Ugne") #}
+            {% set is_specific_selfie = 'selfie with' in text_lower or 'selfie of' in text_lower %}
+            
+            {% if is_photo_mission or 'photo' in text_lower or 'selfie' in text_lower or 'picture' in text_lower %}
                 <div id="photoBlock_{{ mid }}" class="proof-section {% if submissions[mid|string] is not defined or submissions[mid|string].filename == 'NOT COMPLETED' %}hidden{% endif %}">
-                    <label>Upload Photo:</label>
+                    <label>📸 Upload Photo:</label>
                     <input type="file" name="photo_{{ mid }}" accept="image/*">
-                    {% if submissions[mid|string] is defined and submissions[mid|string].filename not in ["NOT COMPLETED","NO PHOTO"] %}
-                        <p style="color: #2e7d32; margin-top: 10px;">✅ Uploaded: {{ submissions[mid|string].filename }}</p>
+                    {% if submissions[mid|string] is defined and submissions[mid|string].filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')) %}
+                        <p style="color: #2e7d32; margin-top: 10px;">✅ Photo uploaded!</p>
+                        <img src="{{ url_for('uploaded_file', filename=submissions[mid|string].filename) }}" 
+                             style="max-width: 150px; max-height: 100px; border-radius: 5px; margin-top: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                    {% endif %}
+                    
+                    {# Se NON è un selfie specifico, mostra anche selezione persone #}
+                    {% if not is_specific_selfie %}
+                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ddd;">
+                        <label>👥 Select people involved (optional):</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: white; margin-top: 8px;">
+                            {% set saved_people = submissions[mid|string].people if submissions[mid|string] is defined and submissions[mid|string].people is defined else [] %}
+                            {% for p in people %}
+                                <label style="display: flex; align-items: center; gap: 8px; margin: 0; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" name="people_{{ mid }}" value="{{ p }}" style="width: 16px; height: 16px; accent-color: #667eea;"
+                                    {% if p in saved_people %}checked{% endif %}>
+                                    <span>{{ p }}</span>
+                                </label>
+                            {% endfor %}
+                        </div>
+                    </div>
                     {% endif %}
                 </div>
             {% else %}

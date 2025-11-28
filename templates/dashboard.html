@@ -251,6 +251,7 @@
     <div class="navbar-right">
         <a href="{{ url_for('index') }}">🏠 Home</a>
         <a href="{{ url_for('dashboard') }}">📊 Dashboard</a>
+        <a href="{{ url_for('pictures') }}">📸 Pictures</a>
         <a href="{{ url_for('leaderboard') }}">🏆 Leaderboard</a>
         <a href="{{ url_for('logout') }}">🚪 Logout</a>
     </div>
@@ -331,6 +332,20 @@
                                 ❌ Not Completed
                             {% elif mission_info.filename == 'COMPLETED' %}
                                 ✅ Completed
+                            {% elif mission_info.filename.endswith('.jpg') or mission_info.filename.endswith('.jpeg') or mission_info.filename.endswith('.png') or mission_info.filename.endswith('.gif') or mission_info.filename.endswith('.webp') %}
+                                ✅ Photo uploaded
+                                <div style="margin-top: 10px;">
+                                    <a href="{{ url_for('uploaded_file', filename=mission_info.filename) }}" target="_blank">
+                                        <img src="{{ url_for('uploaded_file', filename=mission_info.filename) }}" 
+                                             alt="Mission photo" 
+                                             style="max-width: 200px; max-height: 150px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); cursor: pointer;">
+                                    </a>
+                                </div>
+                                {% if mission_info.people_selected %}
+                                <div style="margin-top: 8px; color: #666; font-size: 13px;">
+                                    👥 With: {{ mission_info.people_selected }}
+                                </div>
+                                {% endif %}
                             {% else %}
                                 ✅ Completed with: {{ mission_info.filename }}
                             {% endif %}
@@ -384,6 +399,16 @@
                                     {% endif %}
                                 {% else %}
                                     {% if mission.completed %}✅ Completed{% else %}❌ Not Completed{% endif %}
+                                {% endif %}
+                                
+                                {% if mission.photo_filename %}
+                                <div style="margin-top: 10px;">
+                                    <a href="{{ url_for('uploaded_file', filename=mission.photo_filename) }}" target="_blank">
+                                        <img src="{{ url_for('uploaded_file', filename=mission.photo_filename) }}" 
+                                             alt="Mission photo" 
+                                             style="max-width: 200px; max-height: 150px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); cursor: pointer;">
+                                    </a>
+                                </div>
                                 {% endif %}
                             </div>
                         </div>
@@ -453,6 +478,17 @@
         </div>
     </div>
     {% endfor %}
+
+    <!-- ERASE ALL DATA - Footer -->
+    <div style="margin-top: 40px; padding: 30px; background: #ffebee; border-radius: 10px; border: 2px solid #f44336; text-align: center;">
+        <h3 style="color: #c62828; margin: 0 0 15px 0;">⚠️ DANGER ZONE - Master Reset</h3>
+        <p style="color: #666; margin-bottom: 20px;">This will permanently delete ALL game data for ALL participants. This action cannot be undone!</p>
+        <a href="{{ url_for('erase_all_data') }}" 
+           onclick="return confirm('⚠️ WARNING: This will DELETE ALL GAME DATA for ALL participants!\\n\\nThis includes:\\n- All individual missions\\n- All group missions\\n- All talent guesses\\n- All t-shirt votes\\n\\nAre you absolutely sure?')"
+           style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); color: white; padding: 15px 40px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold; display: inline-block; box-shadow: 0 4px 15px rgba(244,67,54,0.4);">
+            🗑️ ERASE ALL GAME DATA
+        </a>
+    </div>
 
 </div>
 

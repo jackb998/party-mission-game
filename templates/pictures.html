@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Pictures of the Night</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .navbar-left {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .navbar-right {
+            display: flex;
+            gap: 10px;
+        }
+        .navbar-right a {
+            color: white;
+            text-decoration: none;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 15px;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+        .navbar-right a:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .container {
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        h2 {
+            color: #333;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-top: 30px;
+            text-align: center;
+        }
+        .photos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .photo-card {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .photo-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        .photo-container {
+            position: relative;
+            width: 100%;
+            padding-top: 75%; /* 4:3 Aspect Ratio */
+            overflow: hidden;
+            background: #f0f0f0;
+        }
+        .photo-container img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+        .photo-container img:hover {
+            transform: scale(1.05);
+        }
+        .photo-info {
+            padding: 15px;
+        }
+        .photo-participant {
+            font-weight: bold;
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        .photo-mission {
+            color: #667eea;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .photo-timestamp {
+            color: #999;
+            font-size: 12px;
+        }
+        .no-photos {
+            text-align: center;
+            padding: 60px 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .no-photos h3 {
+            color: #666;
+            margin-bottom: 10px;
+        }
+        .no-photos p {
+            color: #999;
+        }
+        .photo-count {
+            text-align: center;
+            color: #666;
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+        
+        /* Lightbox */
+        .lightbox {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        .lightbox.active {
+            display: flex;
+        }
+        .lightbox img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 5px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+        }
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .lightbox-info {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            background: rgba(0,0,0,0.7);
+            padding: 15px 30px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="navbar">
+    <div class="navbar-left">📸 Pictures of the Night</div>
+    <div class="navbar-right">
+        <a href="{{ url_for('index') }}">🏠 Home</a>
+        <a href="{{ url_for('dashboard') }}">📊 Dashboard</a>
+        <a href="{{ url_for('pictures') }}">📸 Pictures</a>
+        <a href="{{ url_for('leaderboard') }}">🏆 Leaderboard</a>
+        <a href="{{ url_for('logout') }}">🚪 Logout</a>
+    </div>
+</div>
+
+<div class="container">
+    <h2>📸 Pictures of the Night</h2>
+    
+    {% if photos %}
+    <div class="photo-count">
+        🎉 {{ photos|length }} photo{{ 's' if photos|length != 1 else '' }} captured!
+    </div>
+    
+    <div class="photos-grid">
+        {% for photo in photos %}
+        <div class="photo-card">
+            <div class="photo-container">
+                <img src="{{ url_for('uploaded_file', filename=photo.filename) }}" 
+                     alt="Photo by {{ photo.participant }}"
+                     data-src="{{ url_for('uploaded_file', filename=photo.filename) }}"
+                     data-participant="{{ photo.participant }}"
+                     data-mission="{{ photo.mission_name }}"
+                     onclick="openLightboxFromElement(this)">
+            </div>
+            <div class="photo-info">
+                <div class="photo-participant">👤 {{ photo.participant }}</div>
+                <div class="photo-mission">🎯 {{ photo.mission_name }}</div>
+                <div class="photo-timestamp">📅 {{ photo.timestamp[:16].replace('T', ' ') if photo.timestamp else '' }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="no-photos">
+        <h3>📷 No photos yet!</h3>
+        <p>Photos will appear here when participants upload selfies for their missions.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+    <span class="lightbox-close">&times;</span>
+    <img id="lightbox-img" src="" alt="">
+    <div class="lightbox-info">
+        <div id="lightbox-participant" style="font-weight: bold; font-size: 18px;"></div>
+        <div id="lightbox-mission" style="margin-top: 5px; opacity: 0.8;"></div>
+    </div>
+</div>
+
+<script>
+function openLightboxFromElement(element) {
+    var src = element.getAttribute('data-src');
+    var participant = element.getAttribute('data-participant');
+    var mission = element.getAttribute('data-mission');
+    openLightbox(src, participant, mission);
+}
+
+function openLightbox(src, participant, mission) {
+    document.getElementById('lightbox-img').src = src;
+    document.getElementById('lightbox-participant').textContent = '👤 ' + participant;
+    document.getElementById('lightbox-mission').textContent = '🎯 ' + mission;
+    document.getElementById('lightbox').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+    document.body.style.overflow = 'auto';
+}
+
+// Close on escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeLightbox();
+    }
+});
+</script>
+
+</body>
+</html>

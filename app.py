@@ -4,11 +4,16 @@ import os
 import sqlite3
 import datetime
 import json
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory
 from werkzeug.utils import secure_filename
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'data.db')
 
@@ -132,6 +137,7 @@ def init_db():
             participant TEXT,
             mission_id INTEGER,
             filename TEXT,
+            people_selected TEXT DEFAULT '',
             points INTEGER,
             timestamp TEXT
         )
@@ -155,7 +161,8 @@ def init_db():
             mission_id INTEGER,
             mission_name TEXT,
             completed INTEGER DEFAULT 0,
-            riddle_answer TEXT DEFAULT ''
+            riddle_answer TEXT DEFAULT '',
+            photo_filename TEXT DEFAULT ''
         )
     """)
     c.execute("""
@@ -267,7 +274,7 @@ def index():
                       (name, talent))
             conn.commit()
 
-        c.execute("SELECT mission_id, filename, points FROM submissions WHERE participant=?", (name,))
+        c.execute("SELECT mission_id, filename, people_selected, points FROM submissions WHERE participant=?", (name,))
         rows = c.fetchall()
         submissions = {}
         missions = []
@@ -276,28 +283,29 @@ def index():
             random_missions = assign_random_missions(name)
             for m in random_missions:
                 mid, mname, diff, points = m
-                c.execute("INSERT INTO submissions (participant,mission_id,filename,points,timestamp) VALUES (?,?,?,?,?)",
-                          (name, mid, "NOT COMPLETED", points, datetime.datetime.now().isoformat()))
-                submissions[str(mid)] = {'filename':"NOT COMPLETED",'points':points}
+                c.execute("INSERT INTO submissions (participant,mission_id,filename,people_selected,points,timestamp) VALUES (?,?,?,?,?,?)",
+                          (name, mid, "NOT COMPLETED", "", points, datetime.datetime.now().isoformat()))
+                submissions[str(mid)] = {'filename':"NOT COMPLETED",'points':points, 'people': []}
                 missions.append((mid, mname, diff, points))
             conn.commit()
         else:
             for row in rows:
-                mid, filename, points = row
+                mid, filename, people_selected, points = row
                 c.execute("SELECT name, difficulty FROM missions WHERE id=?", (mid,))
                 mrow = c.fetchone()
                 if mrow:
                     mname, diff = mrow
                     missions.append((mid, mname, diff, points))
-                    submissions[str(mid)] = {'filename':filename,'points':points}
+                    people_list = [p.strip() for p in people_selected.split(',')] if people_selected else []
+                    submissions[str(mid)] = {'filename':filename,'points':points, 'people': people_list}
 
         total_score = sum(submissions[str(m[0])]['points'] for m in missions if submissions[str(m[0])]['filename']!="NOT COMPLETED")
         conn.close()
         
         print(f"DEBUG: name={name}, passing to template")
-        return render_template('participant.html', name=name, missions=missions, submissions=submissions, total_score=total_score, people=PEOPLE)
+        return render_template('participant.html', name=name, missions=missions, submissions=submissions, total_score=total_score, people=sorted(PEOPLE))
 
-    return render_template('index.html', people=PEOPLE)
+    return render_template('index.html', people=sorted(PEOPLE))
 
 @app.route('/submit_all', methods=['POST'])
 def submit_all():
@@ -320,22 +328,53 @@ def submit_all():
 
             if not completed:
                 value = "NOT COMPLETED"
+                people_str = ""
             else:
-                # Raccogliere tutte le persone selezionate per questa missione
+                # Raccogli le persone selezionate (sempre, se presenti)
                 people_selected = request.form.getlist(f"people_{mission_id}")
-                if people_selected:
-                    value = ", ".join(people_selected)
+                people_str = ", ".join(people_selected) if people_selected else ""
+                
+                # Check if this is a photo mission with photo upload
+                photo_key = f"photo_{mission_id}"
+                if photo_key in request.files:
+                    photo = request.files[photo_key]
+                    if photo and photo.filename and allowed_file(photo.filename):
+                        # Create unique filename
+                        ext = photo.filename.rsplit('.', 1)[1].lower()
+                        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                        safe_name = secure_filename(name.replace(' ', '_'))
+                        filename = f"{safe_name}_mission{mission_id}_{timestamp}.{ext}"
+                        filepath = os.path.join(UPLOAD_FOLDER, filename)
+                        photo.save(filepath)
+                        value = filename  # Save photo filename
+                    else:
+                        # No valid photo
+                        if people_str:
+                            value = people_str
+                        else:
+                            value = "COMPLETED"
                 else:
-                    value = "COMPLETED"
+                    # No photo field, use people or COMPLETED
+                    if people_str:
+                        value = people_str
+                    else:
+                        value = "COMPLETED"
             
-            c.execute("SELECT id FROM submissions WHERE participant=? AND mission_id=?", (name, mission_id))
+            c.execute("SELECT id, filename FROM submissions WHERE participant=? AND mission_id=?", (name, mission_id))
             row = c.fetchone()
+            
+            # Keep existing photo if no new one uploaded
             if row:
-                c.execute("UPDATE submissions SET filename=?, points=?, timestamp=? WHERE id=?",
-                          (value, points, datetime.datetime.now().isoformat(), row[0]))
+                existing_filename = row[1]
+                # If we have no new photo but had one before, keep it
+                if value in ["COMPLETED", people_str] and existing_filename and existing_filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                    value = existing_filename
+                
+                c.execute("UPDATE submissions SET filename=?, people_selected=?, points=?, timestamp=? WHERE id=?",
+                          (value, people_str, points, datetime.datetime.now().isoformat(), row[0]))
             else:
-                c.execute("INSERT INTO submissions (participant,mission_id,filename,points,timestamp) VALUES (?,?,?,?,?)",
-                          (name, mission_id, value, points, datetime.datetime.now().isoformat()))
+                c.execute("INSERT INTO submissions (participant,mission_id,filename,people_selected,points,timestamp) VALUES (?,?,?,?,?,?)",
+                          (name, mission_id, value, people_str, points, datetime.datetime.now().isoformat()))
     conn.commit()
     conn.close()
     flash("All missions submitted successfully!")
@@ -473,6 +512,9 @@ def secret_talent():
     # Filtra solo i player che hanno un talento (non vuoto)
     players_with_talent = [p for p in PLAYERS if p.get('talent', '').strip()]
     
+    # Crea lista di nomi ordinata alfabeticamente per il dropdown "Who do you think has this talent?"
+    players_names_sorted = sorted([p['name'] for p in players_with_talent])
+    
     if request.method=='POST':
         guesser = request.form.get('guesser','')
         player_id = int(request.form.get('player_id','0'))
@@ -496,8 +538,8 @@ def secret_talent():
     conn.close()
     saved_player = session.get('selected_player', '')
     print(f"DEBUG secret_talent: name={name}, saved_player={saved_player}")
-    # Passa solo i player con talento al template
-    return render_template('secret_talent.html', name=name, players=players_with_talent, previous_guesses=previous_guesses, saved_player=saved_player)
+    # Passa i player con talento e la lista nomi ordinata al template
+    return render_template('secret_talent.html', name=name, players=players_with_talent, players_names_sorted=players_names_sorted, previous_guesses=previous_guesses, saved_player=saved_player)
 
 @app.route('/organizer')
 def organizer():
@@ -542,14 +584,14 @@ def dashboard():
     c.execute("SELECT id, name, difficulty FROM missions ORDER BY id")
     missions = {row[0]: {'name': row[1], 'difficulty': row[2]} for row in c.fetchall()}
     
-    c.execute("SELECT participant, mission_id, filename, points FROM submissions")
+    c.execute("SELECT participant, mission_id, filename, people_selected, points FROM submissions")
     submissions = c.fetchall()
     
     c.execute("SELECT guesser, target, guessed_person, guessed_talent, correct, timestamp FROM talent_guesses ORDER BY timestamp")
     talent_guesses = c.fetchall()
     
-    # Include riddle_answer nella query
-    c.execute("SELECT participant, table_name, mission_id, mission_name, completed, riddle_answer FROM group_submissions")
+    # Include riddle_answer e photo_filename nella query
+    c.execute("SELECT participant, table_name, mission_id, mission_name, completed, riddle_answer, photo_filename FROM group_submissions")
     group_submissions = c.fetchall()
     
     c.execute("SELECT voter, voted_for, timestamp FROM tshirt_votes")
@@ -574,20 +616,21 @@ def dashboard():
     
     # Process individual missions
     for sub in submissions:
-        participant, mission_id, filename, points = sub
+        participant, mission_id, filename, people_selected, points = sub
         if participant in participant_data:
             if filename != 'NOT COMPLETED':
                 participant_data[participant]['individual_score'] += points
                 participant_data[participant]['total_score'] += points
             participant_data[participant]['missions'][mission_id] = {
                 'filename': filename,
+                'people_selected': people_selected or '',
                 'points': points,
                 'mission_name': missions.get(mission_id, {}).get('name', 'Unknown')
             }
     
     # Process group missions
     for gsub in group_submissions:
-        participant, table_name, mission_id, mission_name, completed, riddle_answer = gsub
+        participant, table_name, mission_id, mission_name, completed, riddle_answer, photo_filename = gsub
         if participant in participant_data:
             # Get mission info from GROUP_MISSIONS
             points = 0
@@ -627,7 +670,8 @@ def dashboard():
                 'completed': completed,
                 'riddle_answer': riddle_answer or '',
                 'riddle_correct': riddle_correct,
-                'has_riddle': has_riddle
+                'has_riddle': has_riddle,
+                'photo_filename': photo_filename or ''
             })
     
     # Process talent guesses - 15 punti per ogni guess corretto
@@ -739,6 +783,24 @@ def erase_vote(participant):
     flash(f"T-shirt vote by {participant} has been erased!")
     return redirect(url_for('dashboard'))
 
+@app.route('/admin/erase_all_data')
+def erase_all_data():
+    """Cancella TUTTI i dati del gioco"""
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute("DELETE FROM submissions")
+    c.execute("DELETE FROM group_submissions")
+    c.execute("DELETE FROM talent_guesses")
+    c.execute("DELETE FROM tshirt_votes")
+    conn.commit()
+    conn.close()
+    
+    flash("⚠️ ALL GAME DATA has been erased!")
+    return redirect(url_for('dashboard'))
+
 # ==================== END ADMIN ERASE ROUTES ====================
 
 @app.route('/leaderboard')
@@ -838,6 +900,81 @@ def leaderboard():
                          sorted_scores=sorted_scores,
                          tshirt_results=tshirt_results)
 
+# ==================== PHOTOS ROUTES ====================
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    """Serve uploaded files"""
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
+@app.route('/pictures')
+def pictures():
+    """Pictures of the Night - Gallery of all uploaded photos"""
+    if not session.get('logged_in'):
+        flash('Please login first')
+        return redirect(url_for('login'))
+    
+    conn = get_db_conn()
+    c = conn.cursor()
+    
+    # Get all submissions with photos (files that end with image extensions)
+    c.execute("""
+        SELECT s.participant, s.mission_id, s.filename, s.timestamp, m.name as mission_name
+        FROM submissions s
+        JOIN missions m ON s.mission_id = m.id
+        WHERE s.filename LIKE '%.jpg' 
+           OR s.filename LIKE '%.jpeg' 
+           OR s.filename LIKE '%.png' 
+           OR s.filename LIKE '%.gif'
+           OR s.filename LIKE '%.webp'
+        ORDER BY s.timestamp DESC
+    """)
+    
+    photos = []
+    for row in c.fetchall():
+        participant, mission_id, filename, timestamp, mission_name = row
+        # Check if file actually exists
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        if os.path.exists(filepath):
+            photos.append({
+                'participant': participant,
+                'mission_id': mission_id,
+                'filename': filename,
+                'timestamp': timestamp,
+                'mission_name': mission_name,
+                'type': 'individual'
+            })
+    
+    # Also get group mission photos
+    c.execute("""
+        SELECT participant, mission_id, mission_name, photo_filename, table_name
+        FROM group_submissions
+        WHERE photo_filename LIKE '%.jpg' 
+           OR photo_filename LIKE '%.jpeg' 
+           OR photo_filename LIKE '%.png' 
+           OR photo_filename LIKE '%.gif'
+           OR photo_filename LIKE '%.webp'
+    """)
+    
+    for row in c.fetchall():
+        participant, mission_id, mission_name, filename, table_name = row
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        if os.path.exists(filepath):
+            photos.append({
+                'participant': participant,
+                'mission_id': mission_id,
+                'filename': filename,
+                'timestamp': '',
+                'mission_name': f"{mission_name} ({table_name})",
+                'type': 'group'
+            })
+    
+    conn.close()
+    
+    return render_template('pictures.html', photos=photos)
+
+# ==================== END PHOTOS ROUTES ====================
+
 @app.route('/logout')
 def logout():
     session.pop('logged_in', None)
@@ -847,6 +984,9 @@ def logout():
 @app.route('/tshirt_voting', methods=['GET', 'POST'])
 def tshirt_voting():
     name = get_current_user()
+    
+    # Ordina i players alfabeticamente per nome
+    players_sorted = sorted(PLAYERS, key=lambda p: p['name'])
     
     # Se abbiamo un nome (da sessione o URL), mostra direttamente la pagina di voto
     if name:
@@ -864,7 +1004,7 @@ def tshirt_voting():
         # Get saved selection from session
         saved_vote = session.get('selected_tshirt_vote', '')
         
-        return render_template('tshirt_voting.html', name=name, players=PLAYERS, has_voted=has_voted, voted_for=voted_for, saved_vote=saved_vote)
+        return render_template('tshirt_voting.html', name=name, players=players_sorted, has_voted=has_voted, voted_for=voted_for, saved_vote=saved_vote)
     
     # Se non abbiamo nome, redirect alla home
     flash("Please select your name first")
@@ -949,18 +1089,18 @@ def group_missions():
         conn = get_db_conn()
         c = conn.cursor()
         
-        # Get or create group mission submissions
-        c.execute("SELECT mission_id, completed, riddle_answer FROM group_submissions WHERE participant=? AND table_name=?", (name, table))
+        # Get or create group mission submissions (include photo_filename)
+        c.execute("SELECT mission_id, completed, riddle_answer, photo_filename FROM group_submissions WHERE participant=? AND table_name=?", (name, table))
         rows = c.fetchall()
-        submissions = {row[0]: {'completed': row[1], 'riddle_answer': row[2] or ''} for row in rows}
+        submissions = {row[0]: {'completed': row[1], 'riddle_answer': row[2] or '', 'photo_filename': row[3] or ''} for row in rows}
         
         # If no submissions exist, create them
         if not submissions:
             for mission in table_missions:
-                c.execute("INSERT INTO group_submissions (participant, table_name, mission_id, mission_name, completed, riddle_answer) VALUES (?,?,?,?,?,?)",
-                          (name, table, mission['id'], mission['name'], 0, ''))
+                c.execute("INSERT INTO group_submissions (participant, table_name, mission_id, mission_name, completed, riddle_answer, photo_filename) VALUES (?,?,?,?,?,?,?)",
+                          (name, table, mission['id'], mission['name'], 0, '', ''))
             conn.commit()
-            submissions = {mission['id']: {'completed': 0, 'riddle_answer': ''} for mission in table_missions}
+            submissions = {mission['id']: {'completed': 0, 'riddle_answer': '', 'photo_filename': ''} for mission in table_missions}
         
         conn.close()
         
@@ -998,12 +1138,12 @@ def submit_group_missions():
     conn = get_db_conn()
     c = conn.cursor()
     
-    # Find missions for the table to get points
+    # Find missions for the table to get points and names
     table_missions = {}
     for tm in GROUP_MISSIONS:
         if tm['table'] == table:
             for mission in tm['missions']:
-                table_missions[mission['id']] = mission['points']
+                table_missions[mission['id']] = {'points': mission['points'], 'name': mission['name']}
             break
     
     # Update submissions
@@ -1012,8 +1152,32 @@ def submit_group_missions():
             mission_id = int(key.split("_")[1])
             completed = request.form.get(key) == "on"
             
-            c.execute("UPDATE group_submissions SET completed=? WHERE participant=? AND table_name=? AND mission_id=?",
-                      (1 if completed else 0, name, table, mission_id))
+            # Check for photo upload
+            photo_filename = ""
+            photo_key = f"photo_{mission_id}"
+            if photo_key in request.files:
+                photo = request.files[photo_key]
+                if photo and photo.filename and allowed_file(photo.filename):
+                    ext = photo.filename.rsplit('.', 1)[1].lower()
+                    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                    safe_name = secure_filename(name.replace(' ', '_'))
+                    safe_table = secure_filename(table.replace(' ', '_'))
+                    filename = f"{safe_name}_{safe_table}_mission{mission_id}_{timestamp}.{ext}"
+                    filepath = os.path.join(UPLOAD_FOLDER, filename)
+                    photo.save(filepath)
+                    photo_filename = filename
+            
+            # Update or keep existing photo
+            c.execute("SELECT photo_filename FROM group_submissions WHERE participant=? AND table_name=? AND mission_id=?",
+                      (name, table, mission_id))
+            row = c.fetchone()
+            existing_photo = row[0] if row and row[0] else ""
+            
+            # Use new photo if uploaded, otherwise keep existing
+            final_photo = photo_filename if photo_filename else existing_photo
+            
+            c.execute("UPDATE group_submissions SET completed=?, photo_filename=? WHERE participant=? AND table_name=? AND mission_id=?",
+                      (1 if completed else 0, final_photo, name, table, mission_id))
     
     conn.commit()
     conn.close()
