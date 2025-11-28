@@ -2,12 +2,16 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Welcome - Mission Game</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            padding: 0;
+            padding: 15px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
@@ -17,36 +21,39 @@
         .navbar {
             position: fixed;
             top: 0;
-            right: 20px;
-            padding: 20px 0;
+            right: 10px;
+            padding: 15px 0;
+            z-index: 100;
         }
         .navbar a {
             color: white;
             text-decoration: none;
             background: rgba(255,255,255,0.2);
-            padding: 8px 15px;
+            padding: 10px 15px;
             border-radius: 5px;
             transition: background 0.3s;
             font-size: 14px;
             font-weight: bold;
             display: inline-block;
-            margin-left: 10px;
+            margin-left: 5px;
         }
         .navbar a:hover {
             background: rgba(255,255,255,0.3);
         }
         .container {
             background: white;
-            padding: 40px;
+            padding: 30px 20px;
             border-radius: 10px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
             max-width: 500px;
             width: 100%;
+            margin-top: 50px;
         }
         h1 {
             color: #333;
             text-align: center;
             margin-bottom: 30px;
+            font-size: 28px;
         }
         .form-group {
             margin-bottom: 20px;
@@ -92,6 +99,33 @@
             color: #d32f2f;
             text-align: center;
             margin-bottom: 20px;
+        }
+        
+        /* Mobile responsive */
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .container {
+                padding: 25px 15px;
+                margin-top: 60px;
+                border-radius: 8px;
+            }
+            h1 {
+                font-size: 24px;
+                margin-bottom: 25px;
+            }
+            select {
+                font-size: 16px;
+                padding: 14px 12px;
+            }
+            button {
+                font-size: 18px;
+                padding: 14px;
+            }
+            label {
+                font-size: 16px;
+            }
         }
     </style>
 </head>

@@ -2,8 +2,12 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Group Missions</title>
 <style>
+* {
+    box-sizing: border-box;
+}
 body {
     font-family: Arial, sans-serif;
     margin: 0;
@@ -13,45 +17,49 @@ body {
 }
 .navbar {
     background: rgba(0,0,0,0.2);
-    padding: 15px 20px;
+    padding: 12px 15px;
     border-bottom: 3px solid rgba(255,255,255,0.3);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 .navbar-left {
     color: white;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: bold;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
 }
 .navbar-right {
     display: flex;
-    gap: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 .nav-btn {
     color: white;
     text-decoration: none;
     background: rgba(255,255,255,0.2);
-    padding: 8px 15px;
+    padding: 8px 12px;
     border-radius: 5px;
     transition: background 0.3s;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: bold;
+    white-space: nowrap;
 }
 .nav-btn:hover {
     background: rgba(255,255,255,0.3);
 }
 .container {
     max-width: 800px;
-    margin: 20px auto;
-    padding: 20px;
+    margin: 15px auto;
+    padding: 15px;
 }
 h2 {
     color: white;
     text-align: center;
-    margin-bottom: 30px;
-    font-size: 28px;
+    margin-bottom: 25px;
+    font-size: 24px;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
 }
 .table-info {
@@ -157,6 +165,65 @@ button:active {
 }
 .home-button a:hover {
     transform: translateY(-2px);
+}
+
+/* Mobile responsive */
+@media (max-width: 600px) {
+    .navbar {
+        padding: 10px;
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .navbar-left {
+        text-align: center;
+        font-size: 16px;
+        margin-bottom: 10px;
+    }
+    .navbar-right {
+        justify-content: center;
+        gap: 5px;
+    }
+    .nav-btn {
+        padding: 8px 10px;
+        font-size: 11px;
+    }
+    .container {
+        padding: 10px;
+        margin: 10px auto;
+    }
+    h2 {
+        font-size: 20px;
+        margin-bottom: 20px;
+    }
+    .table-info {
+        padding: 15px;
+    }
+    .table-name {
+        font-size: 28px;
+    }
+    .mission-box {
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    .mission-box h3 {
+        font-size: 16px;
+        line-height: 1.4;
+    }
+    .points-label {
+        font-size: 12px;
+        padding: 3px 8px;
+    }
+    .checkbox-label {
+        font-size: 15px;
+    }
+    button[type="submit"] {
+        font-size: 16px;
+        padding: 14px;
+    }
+    .riddle-btn {
+        font-size: 14px !important;
+        padding: 10px 15px !important;
+    }
 }
 </style>
 </head>
