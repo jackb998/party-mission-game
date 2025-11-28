@@ -883,8 +883,51 @@ def leaderboard():
     for participant in scores:
         scores[participant]['total'] = scores[participant]['individual'] + scores[participant]['group'] + scores[participant]['talent']
     
-    # Sort by total score descending
-    sorted_scores = sorted(scores.items(), key=lambda x: x[1]['total'], reverse=True)
+    # Count completed missions for tie-breaker
+    missions_completed = {}
+    for participant in participants:
+        missions_completed[participant] = 0
+    
+    # Count individual missions completed
+    for sub in submissions:
+        participant, mission_id, filename, points = sub
+        if participant in missions_completed and filename != 'NOT COMPLETED':
+            missions_completed[participant] += 1
+    
+    # Count group missions completed
+    for gsub in group_submissions:
+        participant, table_name, mission_id, completed, riddle_answer = gsub
+        if participant in missions_completed and completed:
+            missions_completed[participant] += 1
+    
+    # Add missions_completed to scores
+    for participant in scores:
+        scores[participant]['missions_completed'] = missions_completed.get(participant, 0)
+    
+    # Check for manual winner override
+    manual_winner = session.get('manual_winner', None)
+    
+    # Sort by: 1) manual winner first, 2) total score, 3) missions completed (tie-breaker)
+    def sort_key(item):
+        participant, data = item
+        is_winner = 1 if participant == manual_winner else 0
+        return (is_winner, data['total'], data['missions_completed'])
+    
+    sorted_scores = sorted(scores.items(), key=sort_key, reverse=True)
+    
+    # Detect ties at the top
+    tied_participants = []
+    if len(sorted_scores) >= 2 and not manual_winner:
+        top_score = sorted_scores[0][1]['total']
+        top_missions = sorted_scores[0][1]['missions_completed']
+        
+        for participant, data in sorted_scores:
+            if data['total'] == top_score and data['missions_completed'] == top_missions:
+                tied_participants.append(participant)
+        
+        # Only consider it a tie if more than 1 person
+        if len(tied_participants) <= 1:
+            tied_participants = []
     
     # Prepare data for charts
     leaderboard_data = {
@@ -899,11 +942,52 @@ def leaderboard():
         'votes': [r[1] for r in tshirt_results]
     }
     
+    # Quiz questions for tie-breaker
+    quiz_questions = [
+        {
+            'question': "What's the name of Allseas' record-breaking vessel capable of installing or removing entire offshore platform topsides or jackets in a single lift?",
+            'answer': "Pioneering Spirit"
+        },
+        {
+            'question': "In which year was Allseas founded?",
+            'answer': "1985"
+        },
+        {
+            'question': "What is the approximate topside lift capacity (in tonnes) of the Pioneering Spirit?",
+            'answer': "48,000 tonnes"
+        }
+    ]
+    
     return render_template('leaderboard.html', 
                          leaderboard_data=leaderboard_data, 
                          tshirt_data=tshirt_data,
                          sorted_scores=sorted_scores,
-                         tshirt_results=tshirt_results)
+                         tshirt_results=tshirt_results,
+                         tied_participants=tied_participants,
+                         manual_winner=manual_winner,
+                         quiz_questions=quiz_questions)
+
+@app.route('/mark_winner/<participant>')
+def mark_winner(participant):
+    """Segna manualmente il vincitore in caso di pareggio"""
+    if not session.get('logged_in'):
+        flash('Please login first')
+        return redirect(url_for('login'))
+    
+    session['manual_winner'] = participant
+    flash(f"🏆 {participant} has been marked as the winner!")
+    return redirect(url_for('leaderboard'))
+
+@app.route('/clear_winner')
+def clear_winner():
+    """Rimuove il vincitore manuale"""
+    if not session.get('logged_in'):
+        flash('Please login first')
+        return redirect(url_for('login'))
+    
+    session.pop('manual_winner', None)
+    flash("Winner selection has been cleared.")
+    return redirect(url_for('leaderboard'))
 
 # ==================== PHOTOS ROUTES ====================
 

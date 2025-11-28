@@ -300,6 +300,35 @@
         {% endif %}
     </div>
 
+    <!-- TIE DETECTED Section -->
+    {% if tied_participants and tied_participants|length > 1 %}
+    <div class="tie-section" style="background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%); padding: 30px; border-radius: 15px; margin: 30px 0; text-align: center; box-shadow: 0 10px 30px rgba(255,107,107,0.3);">
+        <h2 style="color: white; margin: 0 0 15px 0; font-size: 28px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">🎯 TIE DETECTED!</h2>
+        <p style="color: white; font-size: 18px; margin-bottom: 20px;">
+            The following players are tied with <strong>{{ tied_participants|length }}</strong> participants at the same score and missions completed:
+        </p>
+        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 25px;">
+            {% for participant in tied_participants %}
+            <span style="background: white; color: #ff6b6b; padding: 10px 20px; border-radius: 25px; font-weight: bold; font-size: 16px;">
+                {{ participant }}
+            </span>
+            {% endfor %}
+        </div>
+        <button onclick="openQuizModal()" style="background: white; color: #ff6b6b; border: none; padding: 15px 40px; border-radius: 30px; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 5px 20px rgba(0,0,0,0.2); transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+            🎄 Start Final Quiz 🎄
+        </button>
+    </div>
+    {% endif %}
+
+    <!-- Manual Winner Display -->
+    {% if manual_winner %}
+    <div style="background: linear-gradient(135deg, #4caf50 0%, #45a049 100%); padding: 20px; border-radius: 15px; margin: 20px 0; text-align: center; box-shadow: 0 5px 20px rgba(76,175,80,0.3);">
+        <h3 style="color: white; margin: 0 0 10px 0;">👑 Official Winner Selected</h3>
+        <p style="color: white; font-size: 24px; font-weight: bold; margin: 0;">{{ manual_winner }}</p>
+        <a href="{{ url_for('clear_winner') }}" style="display: inline-block; margin-top: 15px; color: white; text-decoration: underline; font-size: 14px;">Clear winner selection</a>
+    </div>
+    {% endif %}
+
     <!-- Charts -->
     <div class="charts-container">
         <div class="chart-box">
@@ -322,7 +351,7 @@
 
     <!-- Full Leaderboard Table -->
     <h2>📋 Full Rankings</h2>
-    <table class="leaderboard-table">
+    <table class="leaderboard-table ranking-table">
         <thead>
             <tr>
                 <th>Rank</th>
@@ -330,14 +359,17 @@
                 <th>Individual</th>
                 <th>Group</th>
                 <th>Talent</th>
+                <th>Missions</th>
                 <th>Total</th>
             </tr>
         </thead>
         <tbody>
             {% for player, scores in sorted_scores %}
-            <tr>
+            <tr {% if player in tied_participants %}style="background: #fff3e0;"{% endif %}>
                 <td>
-                    {% if loop.index == 1 %}
+                    {% if player == manual_winner %}
+                    <span class="rank rank-1">👑 1</span>
+                    {% elif loop.index == 1 %}
                     <span class="rank rank-1">🥇 1</span>
                     {% elif loop.index == 2 %}
                     <span class="rank rank-2">🥈 2</span>
@@ -347,10 +379,16 @@
                     <span class="rank">{{ loop.index }}</span>
                     {% endif %}
                 </td>
-                <td><strong>{{ player }}</strong></td>
+                <td>
+                    <strong>{{ player }}</strong>
+                    {% if player in tied_participants and not manual_winner %}
+                    <span style="color: #ff6b6b; font-size: 12px;"> (TIE)</span>
+                    {% endif %}
+                </td>
                 <td><span class="score-badge score-individual">{{ scores['individual'] }}</span></td>
                 <td><span class="score-badge score-group">{{ scores['group'] }}</span></td>
                 <td><span class="score-badge" style="background: linear-gradient(135deg, #ff9800 0%, #ffc107 100%);">{{ scores['talent'] }}</span></td>
+                <td><span class="score-badge" style="background: linear-gradient(135deg, #9c27b0 0%, #673ab7 100%);">{{ scores['missions_completed'] }}</span></td>
                 <td><span class="score-badge score-total">{{ scores['total'] }}</span></td>
             </tr>
             {% endfor %}
@@ -481,6 +519,142 @@ new Chart(tshirtCtx, {
         }
     }
 });
+</script>
+
+<!-- Final Quiz Modal -->
+<div id="quizModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;">
+    <div style="background: white; border-radius: 20px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; border-radius: 20px 20px 0 0; text-align: center;">
+            <h2 style="color: white; margin: 0; font-size: 24px;">🎄 Final Quiz - Tie Breaker 🎄</h2>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">Ask these questions to the tied participants!</p>
+        </div>
+        
+        <!-- Questions Container -->
+        <div style="padding: 25px;">
+            {% if quiz_questions %}
+            {% for q in quiz_questions %}
+            <div class="quiz-question" id="question{{ loop.index }}" style="{% if loop.index > 1 %}display: none;{% endif %} margin-bottom: 20px;">
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; border-left: 5px solid #667eea;">
+                    <div style="color: #667eea; font-weight: bold; margin-bottom: 10px; font-size: 14px;">Question {{ loop.index }} of {{ quiz_questions|length }}</div>
+                    <p style="font-size: 18px; color: #333; margin: 0; line-height: 1.5;">{{ q.question }}</p>
+                </div>
+                
+                <div id="answer{{ loop.index }}" style="display: none; margin-top: 15px; background: #e8f5e9; padding: 15px 20px; border-radius: 10px; border-left: 5px solid #4caf50;">
+                    <div style="color: #4caf50; font-weight: bold; font-size: 14px;">✅ Answer:</div>
+                    <p style="font-size: 20px; color: #2e7d32; margin: 5px 0 0 0; font-weight: bold;">{{ q.answer }}</p>
+                </div>
+                
+                <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                    <button onclick="revealAnswer({{ loop.index }})" id="revealBtn{{ loop.index }}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 25px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                        👁️ Reveal Answer
+                    </button>
+                    
+                    {% if loop.index < quiz_questions|length %}
+                    <button onclick="nextQuestion({{ loop.index }})" id="nextBtn{{ loop.index }}" style="display: none; background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%); color: white; border: none; padding: 12px 25px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                        Next Question ➡️
+                    </button>
+                    {% else %}
+                    <button onclick="showMarkWinner()" id="markWinnerBtn" style="display: none; background: linear-gradient(135deg, #4caf50 0%, #45a049 100%); color: white; border: none; padding: 12px 25px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                        👑 Mark the Winner
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
+            
+            <!-- Mark Winner Section -->
+            <div id="markWinnerSection" style="display: none; text-align: center; padding: 20px; background: #fff3e0; border-radius: 12px; margin-top: 20px;">
+                <h3 style="color: #e65100; margin: 0 0 20px 0;">👑 Select the Winner</h3>
+                <p style="color: #666; margin-bottom: 20px;">Choose the participant who answered correctly first:</p>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    {% for participant in tied_participants %}
+                    <a href="{{ url_for('mark_winner', participant=participant) }}" style="display: block; background: linear-gradient(135deg, #ffd700 0%, #ffb300 100%); color: #333; text-decoration: none; padding: 15px 25px; border-radius: 10px; font-size: 18px; font-weight: bold; transition: transform 0.2s; box-shadow: 0 4px 15px rgba(255,193,7,0.3);" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+                        🏆 {{ participant }}
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Close Button -->
+        <div style="padding: 0 25px 25px 25px; text-align: center;">
+            <button onclick="closeQuizModal()" style="background: #f5f5f5; color: #666; border: none; padding: 12px 30px; border-radius: 25px; font-size: 14px; cursor: pointer;">
+                ✖️ Close
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openQuizModal() {
+    document.getElementById('quizModal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeQuizModal() {
+    var modal = document.getElementById('quizModal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = 'auto';
+    }
+}
+
+function revealAnswer(questionNum) {
+    var answerEl = document.getElementById('answer' + questionNum);
+    var revealBtn = document.getElementById('revealBtn' + questionNum);
+    
+    if (answerEl) answerEl.style.display = 'block';
+    if (revealBtn) revealBtn.style.display = 'none';
+    
+    var nextBtn = document.getElementById('nextBtn' + questionNum);
+    if (nextBtn) {
+        nextBtn.style.display = 'inline-block';
+    }
+    
+    // Show mark winner button on last question
+    var totalQuestions = {{ quiz_questions|length if quiz_questions else 0 }};
+    if (questionNum === totalQuestions) {
+        var markBtn = document.getElementById('markWinnerBtn');
+        if (markBtn) {
+            markBtn.style.display = 'inline-block';
+        }
+    }
+}
+
+function nextQuestion(currentNum) {
+    var currentQ = document.getElementById('question' + currentNum);
+    var nextQ = document.getElementById('question' + (currentNum + 1));
+    
+    if (currentQ) currentQ.style.display = 'none';
+    if (nextQ) nextQ.style.display = 'block';
+}
+
+function showMarkWinner() {
+    var section = document.getElementById('markWinnerSection');
+    var btn = document.getElementById('markWinnerBtn');
+    
+    if (section) section.style.display = 'block';
+    if (btn) btn.style.display = 'none';
+}
+
+// Close modal on escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeQuizModal();
+    }
+});
+
+// Close modal when clicking outside (only if modal exists)
+var quizModal = document.getElementById('quizModal');
+if (quizModal) {
+    quizModal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeQuizModal();
+        }
+    });
+}
 </script>
 
 </body>
