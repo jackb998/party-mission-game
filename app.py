@@ -247,7 +247,12 @@ def assign_random_missions(name, num_easy=3, num_medium=1, num_hard=1):
     
     return missions_with_points
 
-@app.route('/', methods=['GET','POST'])
+@app.route('/')
+def welcome():
+    """Pagina di benvenuto iniziale"""
+    return render_template('welcome.html')
+
+@app.route('/select', methods=['GET','POST'])
 def index():
     # Controlla se c'è un nome in POST, GET o sessione
     if request.method=='POST' or request.args.get('name') or session.get('current_user'):
@@ -1122,9 +1127,9 @@ def change_table():
 
 @app.route('/restart')
 def restart():
-    """Riavvia il gioco cancellando tutta la sessione e tornando alla pagina iniziale"""
+    """Riavvia il gioco cancellando tutta la sessione e tornando alla pagina di benvenuto"""
     session.clear()
-    return redirect(url_for('index'))
+    return redirect(url_for('welcome'))
 
 @app.route('/submit_group_missions', methods=['POST'])
 def submit_group_missions():
