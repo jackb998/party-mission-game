@@ -259,7 +259,7 @@ def index():
         name = request.form.get('name', '') or request.args.get('name', '') or session.get('current_user', '')
         name = name.strip()
         if not name:
-            flash("Please select your name")
+            flash("Please enter your name")
             return redirect(url_for('index'))
 
         session['current_user'] = name
@@ -310,7 +310,7 @@ def index():
         print(f"DEBUG: name={name}, passing to template")
         return render_template('participant.html', name=name, missions=missions, submissions=submissions, total_score=total_score, people=sorted(PEOPLE))
 
-    return render_template('index.html', people=sorted(PEOPLE))
+    return render_template('index.html')
 
 @app.route('/submit_all', methods=['POST'])
 def submit_all():
