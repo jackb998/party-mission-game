@@ -1,112 +1,109 @@
-🎄 Christmas Missions Web App (Flask)
+# 🎮 Mission Game
 
-A lightweight, event-friendly Flask web application designed to manage a fun “missions game” during a Christmas dinner or team event. Participants receive a set of missions, complete them (sometimes with a required photo upload), and collect points. An organizer can monitor all submissions through a simple dashboard.
+A web-based party game where guests complete fun missions, upload photos, and compete for points.  
+Perfect for dinners, birthdays, Halloween parties, team events, and more.
 
-This project is ideal for small private events and can run locally on any laptop.
+> *Turn any party into a game. Missions, photos, points — pure fun.*
 
-⭐ Features
-Participant Experience
+**Curated by JB**
 
-Enter your name and access your assigned missions
+---
 
-Complete missions and upload photos when required
+## ⭐ Features
 
-Automatic score calculation
+### 🎨 Multi-Theme Support
+Choose a theme that fits your event:
+- 🎄 **Christmas** — snowflakes, festive missions
+- 🎂 **Birthday** — balloons, party vibes
+- 🎃 **Halloween** — spooky atmosphere
+- 🎉 **Party** — universal fun for any occasion
 
-Simple and fast mobile-friendly interface
+### 🕹️ Game Modes
+The host picks which games to activate:
+- **📋 Individual Missions** — each player gets a unique set of missions to complete
+- **👥 Group Missions** — team-based challenges
+- **🎭 Secret Talent** — guess who has which hidden talent
 
-Organizer Dashboard
+### 👤 Player Experience
+- Enter your name and join the game
+- Complete missions and upload photos
+- Automatic score calculation
+- Simple, fast, mobile-friendly interface
 
-View all submissions in real time
+### 📊 Host Dashboard
+- View all submissions in real time
+- Check completion rates
+- Monitor scores and leaderboard
+- Download results as CSV
 
-Check completion rates
+---
 
-Download all results as a CSV
+## 🚀 Quick Start
 
-Photos stored locally inside the uploads/ directory
+### 1. Install Python (3.9+)
 
-Technical Characteristics
-
-Zero external services required
-
-Uses a lightweight SQLite database (data.db)
-
-Runs fully offline on a local network
-
-Simple HTML templates powered by Jinja2
-
-🚀 How to Run the App
-1. Install Python (3.9+)
-
-Make sure Python and pip are available on your system.
-
-2. (Optional) Create a virtual environment
+### 2. (Optional) Create a virtual environment
+```bash
 python -m venv venv
 source venv/bin/activate        # macOS / Linux
 venv\Scripts\activate           # Windows
+```
 
-3. Install dependencies
+### 3. Install dependencies
+```bash
 pip install flask werkzeug
+```
 
-4. Start the application
+### 4. Start the application
+```bash
 python app.py
+```
 
-5. Access the web interface
+### 5. Open in browser
+- **Game:** [http://127.0.0.1:5000](http://127.0.0.1:5000)
+- **Admin Dashboard:** [http://127.0.0.1:5000/login](http://127.0.0.1:5000/login)
 
-Participant page:
-http://127.0.0.1:5000
+---
 
-Organizer dashboard:
-http://127.0.0.1:5000/organizer
+## 📁 Project Structure
 
-📁 Project Structure
-/ (root)
-  ├── app.py                 # Main Flask application
-  ├── data.db                # SQLite database (generated automatically)
-  ├── gitignore.db
-  ├── group_missions.json    # Group missions list for the game
-  ├── missions.json          # Individual missions list for the game
-  ├── people.json            # Participant dataset name
-  ├── render.yaml            # Application rendering
-  ├── requirements.txt       # App requirement packages 
-  ├── static/                # Style settings
-        ├── style.css
-  ├── templates/             # HTML templates (Jinja2)
-        ├── dashboard.html
-        ├── group_missions_select.html
-        ├── group_missions.html
-        ├── index.html
-        ├── leaderboard.html
-        ├── login.html
-        ├── organizer.html
-        ├── participant.html
-        ├── secret_talent.html
-        └── tshirt_voting.html
-  └── uploads/               # Photo uploads
+```
+├── app.py                  # Main Flask application
+├── missions.json           # Mission packs (tagged by theme)
+├── group_missions.json     # Group/team missions
+├── render.yaml             # Render.com deployment config
+├── requirements.txt        # Python dependencies
+├── static/
+│   └── style.css
+├── templates/              # HTML templates (Jinja2)
+│   ├── welcome.html        # Landing page (theme + feature selection)
+│   ├── index.html          # Player join page
+│   ├── participant.html    # Main game interface
+│   ├── secret_talent.html  # Talent guessing game
+│   ├── group_missions.html # Team missions
+│   ├── leaderboard.html    # Scoreboard
+│   ├── login.html          # Admin login
+│   ├── dashboard.html      # Admin dashboard
+│   └── organizer.html      # Organizer view
+└── uploads/                # Photo uploads
+```
 
-🎨 Branding & Styling (optional)
+---
 
-The interface can be customized using Allseas branding guidelines (colors, typography, tone).
-If you want the UI to match the Allseas identity exactly, it can be styled based on the brand information available here:
+## 🌐 Deploy Your Own
 
-https://brandfetch.com/allseas.com?view=library&library=default
+Deploy for free on any of these platforms:
 
-I can generate a fully branded CSS theme if needed.
+| Platform | Guide |
+|----------|-------|
+| [Render](https://render.com) | Uses included `render.yaml` |
+| [Railway](https://railway.app) | Connect GitHub repo |
+| [Heroku](https://heroku.com) | Standard Python buildpack |
 
-📬 Contact
+Or run on any VPS / local server for private events.
 
-If you would like to try the app, request access, or need help adapting it for your event, contact the administrator:
+---
 
-jacopobeghetto98@gmail.com
+## 📬 Contact
 
-🌐 Deployment Options
-
-For events where guests are not on the same local network, the app can be deployed on:
-
-Render
-
-Railway
-
-Heroku (free tier alternatives may apply)
-
-Any small VPS or internal server
+Questions or feedback? Reach out at **jacopobeghetto98@gmail.com**

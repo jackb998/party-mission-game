@@ -181,35 +181,40 @@ def get_db_conn():
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.secret_key = os.environ.get('SECRET_KEY', 'christmas-mission-game-2024-secret-key-jbh')
+app.secret_key = os.environ.get('SECRET_KEY', 'party-mission-game-2024-secret-key-jbh')
 
-def load_sample_missions(force_reload=False):
+def load_sample_missions(force_reload=False, theme=None):
+    """Load missions from JSON, optionally filtered by theme."""
     conn = get_db_conn()
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM missions")
     count = c.fetchone()[0]
     conn.close()
-    
+
     if count == 0 or force_reload:
         conn = get_db_conn()
         c = conn.cursor()
         if force_reload:
             c.execute("DELETE FROM missions")
-        
+
         try:
             missions_file = os.path.join(os.path.dirname(__file__), 'missions.json')
             with open(missions_file, 'r', encoding='utf-8') as f:
                 missions = json.load(f)
         except Exception as e:
-            print(f"Errore caricamento missions.json: {e}")
+            print(f"Error loading missions.json: {e}")
             missions = [
-                {"name": "Take a selfie with someone", "difficulty": "easy"},
-                {"name": "Take a selfie in front of a landmark", "difficulty": "easy"},
-                {"name": "Dance with someone", "difficulty": "easy"},
-                {"name": "Find someone with same zodiac sign", "difficulty": "easy"},
-                {"name": "Make a funny video", "difficulty": "medium"},
+                {"name": "Take a selfie with someone", "difficulty": "easy", "themes": ["party"]},
+                {"name": "Take a selfie in front of a landmark", "difficulty": "easy", "themes": ["party"]},
+                {"name": "Dance with someone", "difficulty": "easy", "themes": ["party"]},
+                {"name": "Find someone with same zodiac sign", "difficulty": "easy", "themes": ["party"]},
+                {"name": "Make a funny video", "difficulty": "medium", "themes": ["party"]},
             ]
-        
+
+        # Filter by theme if specified
+        if theme:
+            missions = [m for m in missions if theme in m.get('themes', ['party'])]
+
         for m in missions:
             c.execute("INSERT INTO missions (name, difficulty) VALUES (?,?)",
                       (m['name'], m.get('difficulty', 'easy')))
@@ -249,8 +254,19 @@ def assign_random_missions(name, num_easy=3, num_medium=1, num_hard=1):
 
 @app.route('/')
 def welcome():
-    """Pagina di benvenuto iniziale"""
+    """Landing page with theme and feature selection."""
     return render_template('welcome.html')
+
+@app.route('/setup', methods=['POST'])
+def setup():
+    """Save host's theme and feature selections into session, then redirect to player join."""
+    theme = request.form.get('theme', 'party')
+    features = request.form.getlist('features')
+    session['game_theme'] = theme
+    session['game_features'] = features if features else ['missions']
+    # Force reload missions filtered by the chosen theme
+    load_sample_missions(force_reload=True, theme=theme)
+    return redirect(url_for('index'))
 
 @app.route('/select', methods=['GET','POST'])
 def index():
@@ -270,11 +286,8 @@ def index():
         c.execute("SELECT COUNT(*) FROM participants WHERE name=?", (name,))
         exists = c.fetchone()[0]
         if not exists:
-            try:
-                idx = PEOPLE.index(name)
-                talent = SECRET_TALENTS[idx] if idx < len(SECRET_TALENTS) else ""
-            except ValueError:
-                talent = ""
+            # Talent is passed from the join form (optional)
+            talent = request.form.get('talent', '') or ""
             c.execute("INSERT INTO participants (name, secret_talent) VALUES (?,?)",
                       (name, talent))
             conn.commit()
@@ -308,7 +321,10 @@ def index():
         conn.close()
         
         print(f"DEBUG: name={name}, passing to template")
-        return render_template('participant.html', name=name, missions=missions, submissions=submissions, total_score=total_score, people=sorted(PEOPLE))
+        # Pass active features and theme to template
+        game_features = session.get('game_features', ['missions', 'group_missions', 'secret_talent'])
+        game_theme = session.get('game_theme', 'party')
+        return render_template('participant.html', name=name, missions=missions, submissions=submissions, total_score=total_score, people=[], game_features=game_features, game_theme=game_theme)
 
     return render_template('index.html')
 
@@ -510,14 +526,16 @@ def get_current_user():
 @app.route('/secret_talent', methods=['GET','POST'])
 def secret_talent():
     name = get_current_user()
-    
+
     conn = get_db_conn()
     c = conn.cursor()
-    
-    # Filtra solo i player che hanno un talento (non vuoto)
-    players_with_talent = [p for p in PLAYERS if p.get('talent', '').strip()]
-    
-    # Crea lista di nomi ordinata alfabeticamente per il dropdown "Who do you think has this talent?"
+
+    # Load players dynamically from DB (only those with a talent)
+    c.execute("SELECT id, name, secret_talent FROM participants WHERE secret_talent IS NOT NULL AND secret_talent != ''")
+    rows = c.fetchall()
+    players_with_talent = [{'id': r[0], 'name': r[1], 'talent': r[2]} for r in rows]
+
+    # Sorted list of names for the "Who do you think has this talent?" dropdown
     players_names_sorted = sorted([p['name'] for p in players_with_talent])
     
     if request.method=='POST':
