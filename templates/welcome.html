@@ -129,13 +129,55 @@
             box-shadow: 0 0 15px rgba(255,215,0,0.3);
         }
 
+        /* Feature checkboxes */
+        .feature-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 30px;
+            opacity: 0;
+            animation: fadeInUp 1s ease-out 1.0s forwards;
+        }
+        .feature-selector label {
+            color: white;
+            font-size: 13px;
+            letter-spacing: 1px;
+            text-align: left;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        .feature-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .feature-option:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .feature-option input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #ffd700;
+            cursor: pointer;
+        }
+        .feature-option span {
+            color: white;
+            font-size: 15px;
+        }
+
         /* Curated by */
         .curated-by {
             color: rgba(255, 255, 255, 0.6);
             font-size: 13px;
-            margin-bottom: 40px;
+            margin-bottom: 30px;
             opacity: 0;
-            animation: fadeInUp 1s ease-out 1.0s forwards;
+            animation: fadeInUp 1s ease-out 1.1s forwards;
             letter-spacing: 1px;
         }
         .curated-by span {
@@ -157,7 +199,7 @@
             text-decoration: none;
             transition: all 0.3s ease;
             opacity: 0;
-            animation: fadeInUp 1s ease-out 1.2s forwards;
+            animation: fadeInUp 1s ease-out 1.3s forwards;
         }
         .continue-btn:hover {
             transform: translateY(-3px);
@@ -263,9 +305,29 @@
         <button class="theme-btn active" data-theme="party" onclick="setTheme('party')">🎉 Party</button>
     </div>
 
-    <p class="curated-by">Curated by <span>JB</span></p>
+    <form method="POST" action="{{ url_for('setup') }}" id="setupForm">
+        <input type="hidden" name="theme" id="themeInput" value="party">
 
-    <a href="{{ url_for('index') }}" class="continue-btn" id="continueBtn">Continue</a>
+        <div class="feature-selector">
+            <label>Select game modes:</label>
+            <div class="feature-option" onclick="toggleCheck('feat_missions', event)">
+                <input type="checkbox" name="features" value="missions" id="feat_missions" checked>
+                <span>📋 Individual Missions</span>
+            </div>
+            <div class="feature-option" onclick="toggleCheck('feat_group', event)">
+                <input type="checkbox" name="features" value="group_missions" id="feat_group" checked>
+                <span>👥 Group Missions</span>
+            </div>
+            <div class="feature-option" onclick="toggleCheck('feat_talent', event)">
+                <input type="checkbox" name="features" value="secret_talent" id="feat_talent">
+                <span>🎭 Secret Talent</span>
+            </div>
+        </div>
+
+        <p class="curated-by">Curated by <span>JB</span></p>
+
+        <button type="submit" class="continue-btn" id="continueBtn">Continue</button>
+    </form>
 
     <div class="decorations" id="decorations">
         🎉 🥳 🎊 🥳 🎉
@@ -310,9 +372,16 @@ const themes = {
 
 let currentTheme = localStorage.getItem('gameTheme') || 'party';
 
+function toggleCheck(id, event) {
+    if (event.target.tagName === 'INPUT') return; // checkbox handles itself
+    const cb = document.getElementById(id);
+    cb.checked = !cb.checked;
+}
+
 function setTheme(themeName) {
     currentTheme = themeName;
     localStorage.setItem('gameTheme', themeName);
+    document.getElementById('themeInput').value = themeName;
     const theme = themes[themeName];
 
     // Update body class
