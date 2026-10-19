@@ -7,6 +7,12 @@ Perfect for dinners, birthdays, Halloween parties, team events, and more.
 
 **Curated by JB**
 
+## ▶️ Play now
+
+**👉 [Open the game](https://allseas-christmas-game.onrender.com)**
+
+*The first load can take up to a minute while the server wakes up.*
+
 ---
 
 ## ⭐ Features
@@ -56,12 +62,13 @@ pip install flask werkzeug
 
 ### 4. Start the application
 ```bash
-python app.py
+PORT=5001 python app.py
 ```
+(On macOS port 5000 is used by AirPlay, so 5001 is used here.)
 
 ### 5. Open in browser
-- **Game:** [http://127.0.0.1:5000](http://127.0.0.1:5000)
-- **Admin Dashboard:** [http://127.0.0.1:5000/login](http://127.0.0.1:5000/login)
+- **Game:** [http://127.0.0.1:5001](http://127.0.0.1:5001)
+- **Admin Dashboard:** [http://127.0.0.1:5001/login](http://127.0.0.1:5001/login)
 
 ---
 
