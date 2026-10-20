@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your game is ready</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 30px 20px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 { color: #333; font-size: 26px; margin: 0 0 6px 0; }
+        .sub { color: #777; margin: 0 0 24px 0; }
+        .code {
+            font-size: 44px;
+            letter-spacing: 8px;
+            font-weight: bold;
+            color: #667eea;
+            background: #f0f0ff;
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            padding: 14px 10px;
+            margin-bottom: 10px;
+            word-break: break-all;
+        }
+        .label { color: #555; font-size: 14px; margin: 18px 0 6px 0; font-weight: bold; }
+        .link {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            text-align: center;
+        }
+        .btn {
+            display: block;
+            margin-top: 14px;
+            padding: 13px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .btn.secondary { background: #eee; color: #444; }
+        .note { color: #888; font-size: 13px; margin-top: 18px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>{{ event.icon }} {{ event.name }}</h1>
+    <p class="sub">Your game is ready!</p>
+
+    <div class="label">Game code</div>
+    <div class="code">{{ event.code }}</div>
+
+    <div class="label">Link to share with your guests</div>
+    <input class="link" id="joinLink" type="text" value="{{ join_url }}" readonly onclick="this.select()">
+    <button class="btn secondary" type="button" id="copyBtn">📋 Copy link</button>
+
+    <a class="btn" href="{{ url_for('index') }}">▶️ Play</a>
+    <a class="btn secondary" href="{{ url_for('dashboard') }}">📊 Host dashboard</a>
+
+    <p class="note">Keep your host password safe: you need it to open the dashboard from another device.</p>
+</div>
+<script>
+document.getElementById('copyBtn').addEventListener('click', function () {
+    var input = document.getElementById('joinLink');
+    input.select();
+    var done = function () { document.getElementById('copyBtn').textContent = '✅ Copied!'; };
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(input.value).then(done, function () { document.execCommand('copy'); done(); });
+    } else {
+        document.execCommand('copy');
+        done();
+    }
+});
+</script>
+</body>
+</html>

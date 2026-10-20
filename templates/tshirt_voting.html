@@ -263,7 +263,7 @@ button:disabled {
 <body>
 
 <div class="navbar">
-    <div class="navbar-left">🎮 Mission Game</div>
+    <div class="navbar-left">{{ event.icon }} {{ event.name }}</div>
     <div class="navbar-right">
         <a href="{{ url_for('index', name=name) }}" class="nav-btn">📋 Missions</a>
         <a href="{{ url_for('secret_talent', name=name) }}" class="nav-btn">🎭 Secret Talent</a>
@@ -326,7 +326,7 @@ function saveVoteSelection() {
     var selectedPerson = select.value;
     
     if (selectedPerson) {
-        fetch('/autosave_selection', {
+        fetch('{{ url_for('autosave_selection') }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

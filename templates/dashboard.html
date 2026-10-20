@@ -354,7 +354,7 @@
 <body>
 
 <div class="navbar">
-    <div class="navbar-left">📊 Admin Dashboard</div>
+    <div class="navbar-left">📊 {{ event.name }} · code {{ event.code }}</div>
     <div class="navbar-right">
         <a href="{{ url_for('index') }}">🏠 Home</a>
         <a href="{{ url_for('dashboard') }}">📊 Dashboard</a>

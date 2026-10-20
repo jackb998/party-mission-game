@@ -1,132 +1,159 @@
-import random
-import re
-import os
-import sqlite3
 import datetime
 import json
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory
+import os
+import random
+import re
+import secrets
+import sqlite3
+import string
+import time
+from functools import wraps
+
+from flask import (Flask, abort, flash, g, redirect, render_template, request,
+                   send_from_directory, session, url_for)
+from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', os.path.join(BASE_DIR, 'uploads'))
+DB_PATH = os.environ.get('DB_PATH', os.path.join(BASE_DIR, 'data.db'))
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+IMAGE_EXTENSIONS = tuple('.' + ext for ext in sorted(ALLOWED_EXTENSIONS))
+
+# Themes and game modes an event can be built from.
+THEMES = {
+    'christmas': {'label': 'Christmas', 'icon': '🎄'},
+    'birthday': {'label': 'Birthday', 'icon': '🎂'},
+    'halloween': {'label': 'Halloween', 'icon': '🎃'},
+    'party': {'label': 'Party', 'icon': '🎉'},
+}
+FEATURES = {
+    'missions': 'Individual Missions',
+    'group_missions': 'Group Missions',
+    'secret_talent': 'Secret Talent',
+    'tshirt': 'Voting',  # not offered on the landing page yet
+}
+DEFAULT_FEATURES = ['missions', 'group_missions']
+
+CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'  # no 0/O/1/I
+CODE_LENGTH = 6
+POINTS = {'easy': 5, 'medium': 7, 'hard': 10}
+TALENT_POINTS = 15
+
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'data.db')
 
-# Load people and talents from JSON
-def load_people():
+def clean_text(value, max_len):
+    return ' '.join((value or '').split())[:max_len]
+
+
+def clean_name(value):
+    return clean_text(value, 40)
+
+
+def load_json(filename, default):
     try:
-        people_file = os.path.join(os.path.dirname(__file__), 'people.json')
-        with open(people_file, 'r', encoding='utf-8') as f:
-            people_data = json.load(f)
-        PEOPLE = [p['name'] for p in people_data]
-        SECRET_TALENTS = [p['talent'] for p in people_data]
-        return PEOPLE, SECRET_TALENTS
+        with open(os.path.join(BASE_DIR, filename), 'r', encoding='utf-8') as f:
+            return json.load(f)
     except Exception as e:
-        print(f"Errore caricamento people.json: {e}")
-        return [], []
+        print(f"Error loading {filename}: {e}")
+        return default
 
-def load_players():
-    try:
-        people_file = os.path.join(os.path.dirname(__file__), 'people.json')
-        with open(people_file, 'r', encoding='utf-8') as f:
-            people_data = json.load(f)
-        players_list = []
-        for i, p in enumerate(people_data):
-            players_list.append({
-                'id': i + 1,
-                'name': p['name'],
-                'talent': p['talent']
-            })
-        return players_list
-    except Exception as e:
-        print(f"Errore caricamento players da people.json: {e}")
-        return []
 
-def load_group_missions():
-    try:
-        gm_file = os.path.join(os.path.dirname(__file__), 'group_missions.json')
-        with open(gm_file, 'r', encoding='utf-8') as f:
-            group_missions_data = json.load(f)
-        return group_missions_data
-    except Exception as e:
-        print(f"Errore caricamento group_missions.json: {e}")
-        return []
+GROUP_MISSIONS_ALL = load_json('group_missions.json', [])
 
-PEOPLE, SECRET_TALENTS = load_people()
-PLAYERS = load_players()
-GROUP_MISSIONS = load_group_missions()
+
+def get_group_missions(theme):
+    """Group missions for a theme: missions without a 'themes' key fit every theme."""
+    result = []
+    for table in GROUP_MISSIONS_ALL:
+        missions = [m for m in table['missions'] if theme in m.get('themes', list(THEMES))]
+        if missions:
+            result.append({'table': table['table'], 'missions': missions})
+    return result
+
 
 def normalize_answer(text):
-    """Normalizza una risposta per il confronto (rimuove spazi extra, punteggiatura, lowercase)"""
+    """Normalise an answer for comparison (spaces, punctuation, case, common accents)"""
     if not text:
         return ""
-    import string
-    # Lowercase, rimuovi spazi extra, rimuovi punteggiatura comune
     text = text.lower().strip()
-    text = ' '.join(text.split())  # Rimuove spazi multipli
-    text = text.translate(str.maketrans('', '', string.punctuation))  # Rimuove punteggiatura
-    # Normalizza accenti comuni
+    text = ' '.join(text.split())
+    text = text.translate(str.maketrans('', '', string.punctuation))
     replacements = {'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e', 'à': 'a', 'â': 'a', 'î': 'i', 'ï': 'i', 'ô': 'o', 'û': 'u', 'ù': 'u', 'ç': 'c'}
     for old, new in replacements.items():
         text = text.replace(old, new)
     return text
 
+
 def check_riddle_answer(user_answer, correct_answer="A Christmas Tree"):
-    """Verifica se la risposta dell'utente è corretta (fuzzy matching, multilingua)"""
+    """Check a riddle answer (fuzzy, multilingual) - used by the Christmas riddle."""
     user_norm = normalize_answer(user_answer)
-    
     if not user_norm:
         return False
-    
-    # Risposte accettate in diverse lingue
+
     accepted_answers = [
-        # English
         "christmas tree", "xmas tree", "a christmas tree", "the christmas tree", "tree",
-        # French
         "sapin", "sapin de noel", "un sapin", "le sapin", "sapin de noël", "arbre de noel", "arbre de noël",
-        # Italian
         "albero di natale", "albero", "lalbero di natale",
-        # German
         "weihnachtsbaum", "tannenbaum",
-        # Spanish
         "arbol de navidad", "árbol de navidad",
-        # Portuguese
         "arvore de natal", "árvore de natal"
     ]
-    
-    # Normalizza tutte le risposte accettate
     accepted_normalized = [normalize_answer(ans) for ans in accepted_answers]
-    
-    # Match esatto
     if user_norm in accepted_normalized:
         return True
-    
-    # Controlla se contiene una parola chiave
+
     keywords = ["tree", "sapin", "albero", "baum", "arbol", "arvore", "tannen", "weihnacht", "christmas", "noel", "natal", "natale", "navidad"]
-    for kw in keywords:
-        if kw in user_norm:
-            return True
-    
-    return False
+    return any(kw in user_norm for kw in keywords)
+
+
+# ==================== DATABASE ====================
+
+def get_db_conn():
+    return sqlite3.connect(DB_PATH, timeout=10)
+
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    # A database from before events existed cannot be migrated in place: keep it aside.
+    if os.path.exists(DB_PATH):
+        conn = get_db_conn()
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(participants)").fetchall()]
+        conn.close()
+        if cols and 'event_code' not in cols:
+            stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            os.replace(DB_PATH, f"{DB_PATH}.legacy-{stamp}")
+
+    conn = get_db_conn()
     c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS events (
+            code TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            theme TEXT NOT NULL,
+            features TEXT NOT NULL,
+            host_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS participants (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE,
-            secret_talent TEXT
+            event_code TEXT NOT NULL,
+            name TEXT NOT NULL,
+            secret_talent TEXT DEFAULT '',
+            UNIQUE (event_code, name)
         )
     """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS missions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_code TEXT NOT NULL,
             name TEXT,
             difficulty TEXT
         )
@@ -134,6 +161,7 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_code TEXT NOT NULL,
             participant TEXT,
             mission_id INTEGER,
             filename TEXT,
@@ -145,6 +173,7 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS talent_guesses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_code TEXT NOT NULL,
             guesser TEXT,
             target TEXT,
             guessed_person TEXT,
@@ -156,6 +185,7 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS group_submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_code TEXT NOT NULL,
             participant TEXT,
             table_name TEXT,
             mission_id INTEGER,
@@ -168,478 +198,784 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS tshirt_votes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_code TEXT NOT NULL,
             voter TEXT,
             voted_for TEXT,
             timestamp TEXT
         )
     """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_sub_event ON submissions (event_code, participant)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_gsub_event ON group_submissions (event_code, participant)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_guess_event ON talent_guesses (event_code, guesser)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_mission_event ON missions (event_code)")
     conn.commit()
     conn.close()
 
-def get_db_conn():
-    return sqlite3.connect(DB_PATH)
+
+def get_event(code):
+    conn = get_db_conn()
+    row = conn.execute("SELECT code, name, theme, features, host_hash FROM events WHERE code=?", (code,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    theme = row[2] if row[2] in THEMES else 'party'
+    try:
+        features = [f for f in json.loads(row[3]) if f in FEATURES]
+    except ValueError:
+        features = list(DEFAULT_FEATURES)
+    return {'code': row[0], 'name': row[1], 'theme': theme, 'icon': THEMES[theme]['icon'],
+            'features': features, 'host_hash': row[4]}
+
+
+def generate_code(conn):
+    for _ in range(50):
+        code = ''.join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
+        if not conn.execute("SELECT 1 FROM events WHERE code=?", (code,)).fetchone():
+            return code
+    raise RuntimeError("Could not generate a free event code")
+
+
+def seed_event_missions(cursor, code, theme):
+    """Copy the missions that fit the theme into the new event."""
+    missions = load_json('missions.json', [
+        {"name": "Take a selfie with someone", "difficulty": "easy", "themes": ["party"]},
+        {"name": "Dance with someone", "difficulty": "easy", "themes": ["party"]},
+        {"name": "Make a funny video", "difficulty": "medium", "themes": ["party"]},
+    ])
+    rows = [(code, m['name'], m.get('difficulty', 'easy'))
+            for m in missions if theme in m.get('themes', ['party'])]
+    cursor.executemany("INSERT INTO missions (event_code, name, difficulty) VALUES (?,?,?)", rows)
+
+
+def load_secret_key():
+    key = os.environ.get('SECRET_KEY')
+    if key:
+        return key
+    path = os.path.join(BASE_DIR, '.secret_key')
+    try:
+        with open(path, 'r') as f:
+            key = f.read().strip()
+        if key:
+            return key
+    except OSError:
+        pass
+    key = secrets.token_hex(32)
+    try:
+        with open(path, 'w') as f:
+            f.write(key)
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return key
+
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.secret_key = os.environ.get('SECRET_KEY', 'party-mission-game-2024-secret-key-jbh')
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(days=30)
+app.secret_key = load_secret_key()
 
-def load_sample_missions(force_reload=False, theme=None):
-    """Load missions from JSON, optionally filtered by theme."""
+
+# ==================== EVENT CONTEXT ====================
+
+@app.url_value_preprocessor
+def load_event(endpoint, values):
+    """Routes under /e/<code>/ get their event loaded into g; `code` is not passed to the view."""
+    g.event = None
+    g.code = None
+    if values and 'code' in values:
+        event = get_event(str(values.pop('code')).upper())
+        if not event:
+            abort(404)
+        g.event = event
+        g.code = event['code']
+
+
+@app.url_defaults
+def add_event_code(endpoint, values):
+    """url_for() inside an event fills in the event code automatically."""
+    if 'code' in values or not g.get('code'):
+        return
+    if app.url_map.is_endpoint_expecting(endpoint, 'code'):
+        values['code'] = g.code
+
+
+@app.context_processor
+def inject_event():
+    event = g.get('event')
+    if not event:
+        return {}
+    return {'event': event, 'game_features': event['features'],
+            'game_theme': event['theme'], 'is_host': is_host()}
+
+
+@app.errorhandler(404)
+def not_found(_):
+    return render_template('error.html', message="We couldn't find that page or game."), 404
+
+
+@app.errorhandler(413)
+def too_large(_):
+    return render_template('error.html', message="That file is too big (16 MB maximum)."), 413
+
+
+def skey(key):
+    return f"{g.code}:{key}"
+
+
+def sget(key, default=''):
+    return session.get(skey(key), default)
+
+
+def sset(key, value):
+    session[skey(key)] = value
+    session.permanent = True
+
+
+def spop(key):
+    session.pop(skey(key), None)
+
+
+def is_host():
+    return bool(g.get('code')) and session.get(skey('host')) is True
+
+
+def host_required(view):
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if not is_host():
+            flash('Please login first')
+            return redirect(url_for('login'))
+        return view(*args, **kwargs)
+    return wrapper
+
+
+def feature_required(feature):
+    def decorator(view):
+        @wraps(view)
+        def wrapper(*args, **kwargs):
+            if feature not in g.event['features']:
+                flash("This game mode is not enabled for this event.")
+                return redirect(url_for('index'))
+            return view(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def participant_exists(name):
+    if not name:
+        return False
     conn = get_db_conn()
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM missions")
-    count = c.fetchone()[0]
+    row = conn.execute("SELECT 1 FROM participants WHERE event_code=? AND name=?", (g.code, name)).fetchone()
     conn.close()
+    return row is not None
 
-    if count == 0 or force_reload:
-        conn = get_db_conn()
-        c = conn.cursor()
-        if force_reload:
-            c.execute("DELETE FROM missions")
 
-        try:
-            missions_file = os.path.join(os.path.dirname(__file__), 'missions.json')
-            with open(missions_file, 'r', encoding='utf-8') as f:
-                missions = json.load(f)
-        except Exception as e:
-            print(f"Error loading missions.json: {e}")
-            missions = [
-                {"name": "Take a selfie with someone", "difficulty": "easy", "themes": ["party"]},
-                {"name": "Take a selfie in front of a landmark", "difficulty": "easy", "themes": ["party"]},
-                {"name": "Dance with someone", "difficulty": "easy", "themes": ["party"]},
-                {"name": "Find someone with same zodiac sign", "difficulty": "easy", "themes": ["party"]},
-                {"name": "Make a funny video", "difficulty": "medium", "themes": ["party"]},
-            ]
+def list_participants():
+    conn = get_db_conn()
+    rows = conn.execute("SELECT id, name, secret_talent FROM participants WHERE event_code=? ORDER BY name COLLATE NOCASE",
+                        (g.code,)).fetchall()
+    conn.close()
+    return [{'id': r[0], 'name': r[1], 'talent': r[2] or ''} for r in rows]
 
-        # Filter by theme if specified
-        if theme:
-            missions = [m for m in missions if theme in m.get('themes', ['party'])]
 
-        for m in missions:
-            c.execute("INSERT INTO missions (name, difficulty) VALUES (?,?)",
-                      (m['name'], m.get('difficulty', 'easy')))
-        conn.commit()
-        conn.close()
+def get_current_user():
+    """Current player of this event: from the URL or the session (only if they exist)."""
+    name = clean_name(request.args.get('name', '')) or sget('current_user')
+    return name if participant_exists(name) else ''
+
+
+def save_photo(photo, *parts):
+    ext = photo.filename.rsplit('.', 1)[1].lower()
+    stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    safe = '_'.join(secure_filename(str(p).replace(' ', '_')) for p in parts)
+    filename = f"{g.code}_{safe}_{stamp}.{ext}"
+    photo.save(os.path.join(UPLOAD_FOLDER, filename))
+    return filename
+
 
 def assign_random_missions(name, num_easy=3, num_medium=1, num_hard=1):
     conn = get_db_conn()
-    c = conn.cursor()
-    c.execute("SELECT id, name, difficulty FROM missions")
-    all_missions = c.fetchall()
+    all_missions = conn.execute("SELECT id, name, difficulty FROM missions WHERE event_code=?", (g.code,)).fetchall()
     conn.close()
 
     first_name = name.strip().split()[0]
     pattern = re.compile(re.escape(first_name), re.IGNORECASE)
     available = [m for m in all_missions if not pattern.search(m[1])]
 
-    easy_selfie = [m for m in available if m[2]=='easy' and "Take a selfie" in m[1]]
-    easy_other = [m for m in available if m[2]=='easy' and "Take a selfie" not in m[1]]
-    medium = [m for m in available if m[2]=='medium']
-    hard = [m for m in available if m[2]=='hard']
+    easy_selfie = [m for m in available if m[2] == 'easy' and "Take a selfie" in m[1]]
+    easy_other = [m for m in available if m[2] == 'easy' and "Take a selfie" not in m[1]]
+    medium = [m for m in available if m[2] == 'medium']
+    hard = [m for m in available if m[2] == 'hard']
 
-    try:
-        selected = random.sample(easy_selfie, min(1, len(easy_selfie))) + \
-                   random.sample(easy_other, min(num_easy-1, len(easy_other))) + \
-                   random.sample(medium, min(num_medium, len(medium))) + \
-                   random.sample(hard, min(num_hard, len(hard)))
-    except ValueError:
+    selected = random.sample(easy_selfie, min(1, len(easy_selfie))) + \
+        random.sample(easy_other, min(num_easy - 1, len(easy_other))) + \
+        random.sample(medium, min(num_medium, len(medium))) + \
+        random.sample(hard, min(num_hard, len(hard)))
+    if not selected:
         selected = random.sample(available, min(5, len(available)))
 
-    missions_with_points = []
-    for m in selected:
-        points = 5 if m[2]=="easy" else 7 if m[2]=="medium" else 10
-        missions_with_points.append((m[0], m[1], m[2], points))
-    
-    return missions_with_points
+    return [(m[0], m[1], m[2], POINTS.get(m[2], 10)) for m in selected]
+
+
+# ==================== LANDING / CREATE / JOIN ====================
 
 @app.route('/')
 def welcome():
-    """Landing page with theme and feature selection."""
-    return render_template('welcome.html')
+    """Landing page: join a game with a code, or create your own."""
+    return render_template('welcome.html', features={k: v for k, v in FEATURES.items() if k != 'tshirt'})
 
-@app.route('/setup', methods=['POST'])
-def setup():
-    """Save host's theme and feature selections into session, then redirect to player join."""
+
+@app.route('/create', methods=['POST'])
+def create_event():
+    name = clean_text(request.form.get('name', ''), 60) or 'Mission Game'
     theme = request.form.get('theme', 'party')
-    features = request.form.getlist('features')
-    session['game_theme'] = theme
-    session['game_features'] = features if features else ['missions']
-    # Force reload missions filtered by the chosen theme
-    load_sample_missions(force_reload=True, theme=theme)
-    return redirect(url_for('index'))
+    if theme not in THEMES:
+        theme = 'party'
+    features = [f for f in request.form.getlist('features') if f in FEATURES and f != 'tshirt']
+    if not features:
+        features = list(DEFAULT_FEATURES)
+    password = request.form.get('password', '')
+    if len(password) < 4:
+        flash("Choose a host password of at least 4 characters.")
+        return redirect(url_for('welcome'))
 
-@app.route('/select', methods=['GET','POST'])
+    conn = get_db_conn()
+    code = generate_code(conn)
+    conn.execute("INSERT INTO events (code, name, theme, features, host_hash, created_at) VALUES (?,?,?,?,?,?)",
+                 (code, name, theme, json.dumps(features), generate_password_hash(password),
+                  datetime.datetime.now().isoformat()))
+    seed_event_missions(conn.cursor(), code, theme)
+    conn.commit()
+    conn.close()
+
+    session[f"{code}:host"] = True
+    session.permanent = True
+    return redirect(url_for('event_created', code=code))
+
+
+@app.route('/join', methods=['GET', 'POST'])
+def join():
+    code = clean_text(request.values.get('code', ''), 12).upper()
+    if get_event(code):
+        return redirect(url_for('index', code=code))
+    flash("We couldn't find a game with that code.")
+    return redirect(url_for('welcome'))
+
+
+@app.route('/e/<code>/created')
+@host_required
+def event_created():
+    join_url = url_for('index', _external=True)
+    return render_template('event_created.html', join_url=join_url)
+
+
+# ==================== PLAYER AREA ====================
+
+@app.route('/e/<code>/select', methods=['GET', 'POST'])
 def index():
-    # Controlla se c'è un nome in POST, GET o sessione
-    if request.method=='POST' or request.args.get('name') or session.get('current_user'):
-        name = request.form.get('name', '') or request.args.get('name', '') or session.get('current_user', '')
-        name = name.strip()
+    if request.method == 'POST':
+        name = clean_name(request.form.get('name', ''))
         if not name:
             flash("Please enter your name")
             return redirect(url_for('index'))
-
-        session['current_user'] = name
-
+        talent = clean_text(request.form.get('talent', ''), 200)
         conn = get_db_conn()
-        c = conn.cursor()
-        
-        c.execute("SELECT COUNT(*) FROM participants WHERE name=?", (name,))
-        exists = c.fetchone()[0]
-        if not exists:
-            # Talent is passed from the join form (optional)
-            talent = request.form.get('talent', '') or ""
-            c.execute("INSERT INTO participants (name, secret_talent) VALUES (?,?)",
-                      (name, talent))
-            conn.commit()
-
-        c.execute("SELECT mission_id, filename, people_selected, points FROM submissions WHERE participant=?", (name,))
-        rows = c.fetchall()
-        submissions = {}
-        missions = []
-        
-        if not rows:
-            random_missions = assign_random_missions(name)
-            for m in random_missions:
-                mid, mname, diff, points = m
-                c.execute("INSERT INTO submissions (participant,mission_id,filename,people_selected,points,timestamp) VALUES (?,?,?,?,?,?)",
-                          (name, mid, "NOT COMPLETED", "", points, datetime.datetime.now().isoformat()))
-                submissions[str(mid)] = {'filename':"NOT COMPLETED",'points':points, 'people': []}
-                missions.append((mid, mname, diff, points))
-            conn.commit()
-        else:
-            for row in rows:
-                mid, filename, people_selected, points = row
-                c.execute("SELECT name, difficulty FROM missions WHERE id=?", (mid,))
-                mrow = c.fetchone()
-                if mrow:
-                    mname, diff = mrow
-                    missions.append((mid, mname, diff, points))
-                    people_list = [p.strip() for p in people_selected.split(',')] if people_selected else []
-                    submissions[str(mid)] = {'filename':filename,'points':points, 'people': people_list}
-
-        total_score = sum(submissions[str(m[0])]['points'] for m in missions if submissions[str(m[0])]['filename']!="NOT COMPLETED")
+        conn.execute("INSERT OR IGNORE INTO participants (event_code, name, secret_talent) VALUES (?,?,?)",
+                     (g.code, name, talent))
+        if talent:
+            conn.execute("UPDATE participants SET secret_talent=? WHERE event_code=? AND name=? AND COALESCE(secret_talent,'')=''",
+                         (talent, g.code, name))
+        conn.commit()
         conn.close()
-        
-        print(f"DEBUG: name={name}, passing to template")
-        # Pass active features and theme to template
-        game_features = session.get('game_features', ['missions', 'group_missions', 'secret_talent'])
-        game_theme = session.get('game_theme', 'party')
-        return render_template('participant.html', name=name, missions=missions, submissions=submissions, total_score=total_score, people=[], game_features=game_features, game_theme=game_theme)
+        sset('current_user', name)
+        return redirect(url_for('index'))
 
-    return render_template('index.html')
-
-@app.route('/submit_all', methods=['POST'])
-def submit_all():
-    name = request.form.get('participant','').strip()
+    name = get_current_user()
     if not name:
-        flash("Participant name missing")
+        spop('current_user')
+        return render_template('index.html', participants=list_participants(),
+                               ask_talent='secret_talent' in g.event['features'])
+    sset('current_user', name)
+
+    features = g.event['features']
+    if 'missions' not in features:
+        first = next((f for f in ('group_missions', 'secret_talent') if f in features), None)
+        if first:
+            return redirect(url_for(first, name=name))
+
+    conn = get_db_conn()
+    c = conn.cursor()
+    c.execute("SELECT mission_id, filename, people_selected, points FROM submissions WHERE event_code=? AND participant=?",
+              (g.code, name))
+    rows = c.fetchall()
+    submissions = {}
+    missions = []
+
+    if not rows:
+        for mid, mname, diff, points in assign_random_missions(name):
+            c.execute("INSERT INTO submissions (event_code, participant, mission_id, filename, people_selected, points, timestamp) VALUES (?,?,?,?,?,?,?)",
+                      (g.code, name, mid, "NOT COMPLETED", "", points, datetime.datetime.now().isoformat()))
+            submissions[str(mid)] = {'filename': "NOT COMPLETED", 'points': points, 'people': []}
+            missions.append((mid, mname, diff, points))
+        conn.commit()
+    else:
+        for mid, filename, people_selected, points in rows:
+            c.execute("SELECT name, difficulty FROM missions WHERE id=? AND event_code=?", (mid, g.code))
+            mrow = c.fetchone()
+            if mrow:
+                missions.append((mid, mrow[0], mrow[1], points))
+                people_list = [p.strip() for p in people_selected.split(',')] if people_selected else []
+                submissions[str(mid)] = {'filename': filename, 'points': points, 'people': people_list}
+
+    total_score = sum(submissions[str(m[0])]['points'] for m in missions
+                      if submissions[str(m[0])]['filename'] != "NOT COMPLETED")
+    conn.close()
+
+    people = [p['name'] for p in list_participants() if p['name'] != name]
+    return render_template('participant.html', name=name, missions=missions, submissions=submissions,
+                           total_score=total_score, people=people)
+
+
+@app.route('/e/<code>/submit_all', methods=['POST'])
+@feature_required('missions')
+def submit_all():
+    name = clean_name(request.form.get('participant', ''))
+    if not participant_exists(name):
+        flash("Participant not found")
         return redirect(url_for('index'))
     conn = get_db_conn()
     c = conn.cursor()
     for key in request.form.keys():
-        if key.startswith("mission_"):
-            mission_id = key.split("_")[1]
-            c.execute("SELECT name, difficulty FROM missions WHERE id=?", (mission_id,))
-            mission = c.fetchone()
-            if not mission:
-                continue
-            mname, diff = mission
-            points = 5 if diff=="easy" else 7 if diff=="medium" else 10
-            completed = request.form.get(f"completed_{mission_id}")=="on"
+        if not key.startswith("mission_"):
+            continue
+        mission_id = key.split("_")[1]
+        c.execute("SELECT name, difficulty FROM missions WHERE id=? AND event_code=?", (mission_id, g.code))
+        mission = c.fetchone()
+        if not mission:
+            continue
+        points = POINTS.get(mission[1], 10)
+        completed = request.form.get(f"completed_{mission_id}") == "on"
 
-            if not completed:
-                value = "NOT COMPLETED"
-                people_str = ""
+        if not completed:
+            value = "NOT COMPLETED"
+            people_str = ""
+        else:
+            people_selected = request.form.getlist(f"people_{mission_id}")
+            people_str = ", ".join(people_selected) if people_selected else ""
+            photo = request.files.get(f"photo_{mission_id}")
+            if photo and photo.filename and allowed_file(photo.filename):
+                value = save_photo(photo, name, f"mission{mission_id}")
             else:
-                # Raccogli le persone selezionate (sempre, se presenti)
-                people_selected = request.form.getlist(f"people_{mission_id}")
-                people_str = ", ".join(people_selected) if people_selected else ""
-                
-                # Check if this is a photo mission with photo upload
-                photo_key = f"photo_{mission_id}"
-                if photo_key in request.files:
-                    photo = request.files[photo_key]
-                    if photo and photo.filename and allowed_file(photo.filename):
-                        # Create unique filename
-                        ext = photo.filename.rsplit('.', 1)[1].lower()
-                        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-                        safe_name = secure_filename(name.replace(' ', '_'))
-                        filename = f"{safe_name}_mission{mission_id}_{timestamp}.{ext}"
-                        filepath = os.path.join(UPLOAD_FOLDER, filename)
-                        photo.save(filepath)
-                        value = filename  # Save photo filename
-                    else:
-                        # No valid photo
-                        if people_str:
-                            value = people_str
-                        else:
-                            value = "COMPLETED"
-                else:
-                    # No photo field, use people or COMPLETED
-                    if people_str:
-                        value = people_str
-                    else:
-                        value = "COMPLETED"
-            
-            c.execute("SELECT id, filename FROM submissions WHERE participant=? AND mission_id=?", (name, mission_id))
-            row = c.fetchone()
-            
-            # Keep existing photo if no new one uploaded
-            if row:
-                existing_filename = row[1]
-                # If we have no new photo but had one before, keep it
-                if value in ["COMPLETED", people_str] and existing_filename and existing_filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-                    value = existing_filename
-                
-                c.execute("UPDATE submissions SET filename=?, people_selected=?, points=?, timestamp=? WHERE id=?",
-                          (value, people_str, points, datetime.datetime.now().isoformat(), row[0]))
-            else:
-                c.execute("INSERT INTO submissions (participant,mission_id,filename,people_selected,points,timestamp) VALUES (?,?,?,?,?,?)",
-                          (name, mission_id, value, people_str, points, datetime.datetime.now().isoformat()))
+                value = people_str if people_str else "COMPLETED"
+
+        c.execute("SELECT id, filename FROM submissions WHERE event_code=? AND participant=? AND mission_id=?",
+                  (g.code, name, mission_id))
+        row = c.fetchone()
+        if row:
+            existing_filename = row[1]
+            if value in ["COMPLETED", people_str] and existing_filename and existing_filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                value = existing_filename
+            c.execute("UPDATE submissions SET filename=?, people_selected=?, points=?, timestamp=? WHERE id=?",
+                      (value, people_str, points, datetime.datetime.now().isoformat(), row[0]))
+        else:
+            c.execute("INSERT INTO submissions (event_code, participant, mission_id, filename, people_selected, points, timestamp) VALUES (?,?,?,?,?,?,?)",
+                      (g.code, name, mission_id, value, people_str, points, datetime.datetime.now().isoformat()))
     conn.commit()
     conn.close()
     flash("All missions submitted successfully!")
-    return redirect(url_for('index') + f"?name={name}")
+    return redirect(url_for('index', name=name))
 
-@app.route('/autosave_mission', methods=['POST'])
+
+@app.route('/e/<code>/autosave_mission', methods=['POST'])
+@feature_required('missions')
 def autosave_mission():
-    """Auto-save singola missione via AJAX"""
-    data = request.get_json()
+    """Auto-save a single mission via AJAX"""
+    data = request.get_json(silent=True)
     if not data:
         return {'success': False, 'error': 'No data'}, 400
-    
-    name = data.get('participant', '').strip()
+
+    name = clean_name(data.get('participant', ''))
     mission_id = data.get('mission_id')
     completed = data.get('completed', False)
     people_selected = data.get('people', [])
-    
-    if not name or not mission_id:
+    if not participant_exists(name) or not mission_id:
         return {'success': False, 'error': 'Missing data'}, 400
-    
+
     conn = get_db_conn()
     c = conn.cursor()
-    
-    # Get mission info
-    c.execute("SELECT name, difficulty FROM missions WHERE id=?", (mission_id,))
+    c.execute("SELECT name, difficulty FROM missions WHERE id=? AND event_code=?", (mission_id, g.code))
     mission = c.fetchone()
     if not mission:
         conn.close()
         return {'success': False, 'error': 'Mission not found'}, 404
-    
-    mname, diff = mission
-    points = 5 if diff == "easy" else 7 if diff == "medium" else 10
-    
+
+    points = POINTS.get(mission[1], 10)
+    people_str = ", ".join(clean_name(str(p)) for p in people_selected) if people_selected else ""
+
+    c.execute("SELECT id, filename FROM submissions WHERE event_code=? AND participant=? AND mission_id=?", (g.code, name, mission_id))
+    row = c.fetchone()
     if not completed:
         value = "NOT COMPLETED"
+        people_str = ""
+    elif row and row[1] and row[1].lower().endswith(IMAGE_EXTENSIONS):
+        value = row[1]  # keep the uploaded photo
     else:
-        if people_selected:
-            value = ", ".join(people_selected)
-        else:
-            value = "COMPLETED"
-    
-    # Update or insert
-    c.execute("SELECT id FROM submissions WHERE participant=? AND mission_id=?", (name, mission_id))
-    row = c.fetchone()
+        value = people_str or "COMPLETED"
+
     if row:
-        c.execute("UPDATE submissions SET filename=?, points=?, timestamp=? WHERE id=?",
-                  (value, points, datetime.datetime.now().isoformat(), row[0]))
+        c.execute("UPDATE submissions SET filename=?, people_selected=?, points=?, timestamp=? WHERE id=?",
+                  (value, people_str, points, datetime.datetime.now().isoformat(), row[0]))
     else:
-        c.execute("INSERT INTO submissions (participant,mission_id,filename,points,timestamp) VALUES (?,?,?,?,?)",
-                  (name, mission_id, value, points, datetime.datetime.now().isoformat()))
-    
+        c.execute("INSERT INTO submissions (event_code, participant, mission_id, filename, people_selected, points, timestamp) VALUES (?,?,?,?,?,?,?)",
+                  (g.code, name, mission_id, value, people_str, points, datetime.datetime.now().isoformat()))
     conn.commit()
     conn.close()
-    
     return {'success': True, 'value': value, 'points': points}
 
-@app.route('/autosave_group_mission', methods=['POST'])
+
+@app.route('/e/<code>/autosave_group_mission', methods=['POST'])
+@feature_required('group_missions')
 def autosave_group_mission():
-    """Auto-save gruppo missione via AJAX"""
-    data = request.get_json()
+    """Auto-save a group mission via AJAX"""
+    data = request.get_json(silent=True)
     if not data:
         return {'success': False, 'error': 'No data'}, 400
-    
-    name = data.get('participant', '').strip()
-    table = data.get('table', '').strip()
+
+    name = clean_name(data.get('participant', ''))
+    table = clean_text(data.get('table', ''), 60)
     mission_id = data.get('mission_id')
     completed = data.get('completed', False)
-    riddle_answer = data.get('riddle_answer', '').strip()
-    
-    if not name or not table or not mission_id:
+    riddle_answer = clean_text(data.get('riddle_answer', ''), 200)
+    if not participant_exists(name) or not table or not mission_id:
         return {'success': False, 'error': 'Missing data'}, 400
-    
+
     conn = get_db_conn()
     c = conn.cursor()
-    
-    # Check if submission exists
-    c.execute("SELECT id FROM group_submissions WHERE participant=? AND table_name=? AND mission_id=?", 
-              (name, table, mission_id))
+    c.execute("SELECT id FROM group_submissions WHERE event_code=? AND participant=? AND table_name=? AND mission_id=?",
+              (g.code, name, table, mission_id))
     row = c.fetchone()
-    
     if row:
         c.execute("UPDATE group_submissions SET completed=?, riddle_answer=? WHERE id=?",
                   (1 if completed else 0, riddle_answer, row[0]))
     else:
-        # Get mission name from GROUP_MISSIONS
         mission_name = ""
-        for tm in GROUP_MISSIONS:
+        for tm in get_group_missions(g.event['theme']):
             if tm['table'] == table:
                 for m in tm['missions']:
                     if m['id'] == mission_id:
                         mission_name = m['name']
-                        break
-        
-        c.execute("INSERT INTO group_submissions (participant, table_name, mission_id, mission_name, completed, riddle_answer) VALUES (?,?,?,?,?,?)",
-                  (name, table, mission_id, mission_name, 1 if completed else 0, riddle_answer))
-    
+        c.execute("INSERT INTO group_submissions (event_code, participant, table_name, mission_id, mission_name, completed, riddle_answer) VALUES (?,?,?,?,?,?,?)",
+                  (g.code, name, table, mission_id, mission_name, 1 if completed else 0, riddle_answer))
     conn.commit()
     conn.close()
-    
     return {'success': True}
 
-@app.route('/autosave_selection', methods=['POST'])
+
+@app.route('/e/<code>/autosave_selection', methods=['POST'])
 def autosave_selection():
-    """Auto-save selezione dropdown (tavolo, player, etc.) nella sessione"""
-    data = request.get_json()
+    """Remember a dropdown choice (table, player, ...) in the session"""
+    data = request.get_json(silent=True)
     if not data:
         return {'success': False, 'error': 'No data'}, 400
-    
+
     selection_type = data.get('type', '')
-    value = data.get('value', '')
-    
-    if selection_type == 'table':
-        session['selected_table'] = value
-    elif selection_type == 'player':
-        session['selected_player'] = value
-    elif selection_type == 'tshirt_vote':
-        session['selected_tshirt_vote'] = value
-    else:
+    value = clean_text(str(data.get('value', '')), 80)
+    keys = {'table': 'selected_table', 'player': 'selected_player', 'tshirt_vote': 'selected_tshirt_vote'}
+    if selection_type not in keys:
         return {'success': False, 'error': 'Unknown selection type'}, 400
-    
+    sset(keys[selection_type], value)
     return {'success': True, 'saved': value}
 
-def get_current_user():
-    """Ottieni il nome dell'utente corrente da URL o sessione"""
-    name = request.args.get('name', '') or session.get('current_user', '')
-    return name.strip()
 
-@app.route('/secret_talent', methods=['GET','POST'])
+@app.route('/e/<code>/restart')
+def restart():
+    """Forget the current player on this device so someone else can play"""
+    for key in ('current_user', 'selected_table', 'selected_player', 'selected_tshirt_vote'):
+        spop(key)
+    return redirect(url_for('index'))
+
+
+# ==================== SECRET TALENT ====================
+
+@app.route('/e/<code>/secret_talent', methods=['GET', 'POST'])
+@feature_required('secret_talent')
 def secret_talent():
     name = get_current_user()
+    if not name:
+        flash("Please enter your name first")
+        return redirect(url_for('index'))
 
     conn = get_db_conn()
     c = conn.cursor()
+    c.execute("SELECT id, name, secret_talent FROM participants WHERE event_code=? AND secret_talent IS NOT NULL AND secret_talent != '' ORDER BY id",
+              (g.code,))
+    players_with_talent = [{'id': r[0], 'name': r[1], 'talent': r[2]} for r in c.fetchall()]
+    players_names_sorted = sorted([p['name'] for p in players_with_talent], key=str.lower)
 
-    # Load players dynamically from DB (only those with a talent)
-    c.execute("SELECT id, name, secret_talent FROM participants WHERE secret_talent IS NOT NULL AND secret_talent != ''")
-    rows = c.fetchall()
-    players_with_talent = [{'id': r[0], 'name': r[1], 'talent': r[2]} for r in rows]
-
-    # Sorted list of names for the "Who do you think has this talent?" dropdown
-    players_names_sorted = sorted([p['name'] for p in players_with_talent])
-    
-    if request.method=='POST':
-        guesser = request.form.get('guesser','')
-        player_id = int(request.form.get('player_id','0'))
-        guessed_person = request.form.get('guessed_person','')
-        if guesser and player_id and guessed_person:
-            # Trova il player nella lista filtrata
-            player_data = next((p for p in players_with_talent if p['id'] == player_id), None)
-            if player_data:
-                player_name = player_data['name']  # Chi ha veramente quel talento
-                talent = player_data['talent']
-                correct = 1 if guessed_person == player_name else 0
-                c.execute("INSERT INTO talent_guesses (guesser, target, guessed_person, guessed_talent, correct, timestamp) VALUES (?,?,?,?,?,?)",
-                          (guesser, player_name, guessed_person, talent, correct, datetime.datetime.now().isoformat()))
+    if request.method == 'POST':
+        try:
+            player_id = int(request.form.get('player_id', '0'))
+        except ValueError:
+            player_id = 0
+        guessed_person = clean_name(request.form.get('guessed_person', ''))
+        player_data = next((p for p in players_with_talent if p['id'] == player_id), None)
+        if player_data and guessed_person:
+            c.execute("SELECT 1 FROM talent_guesses WHERE event_code=? AND guesser=? AND target=?",
+                      (g.code, name, player_data['name']))
+            if c.fetchone():
+                flash("You already guessed this talent!")
+            else:
+                correct = 1 if guessed_person == player_data['name'] else 0
+                c.execute("INSERT INTO talent_guesses (event_code, guesser, target, guessed_person, guessed_talent, correct, timestamp) VALUES (?,?,?,?,?,?,?)",
+                          (g.code, name, player_data['name'], guessed_person, player_data['talent'], correct,
+                           datetime.datetime.now().isoformat()))
                 conn.commit()
                 flash("Your guess has been recorded!")
         conn.close()
-        return redirect(url_for('secret_talent', name=guesser))
+        return redirect(url_for('secret_talent', name=name))
 
-    c.execute("SELECT guessed_talent, guessed_person, correct FROM talent_guesses WHERE guesser=?", (name,))
-    previous_guesses = [{'talent': row[0], 'guessed_person': row[1], 'correct': row[2]} for row in c.fetchall()]
+    c.execute("SELECT guessed_talent, guessed_person, correct, target FROM talent_guesses WHERE event_code=? AND guesser=?",
+              (g.code, name))
+    previous_guesses = [{'talent': r[0], 'guessed_person': r[1], 'correct': r[2], 'target': r[3]} for r in c.fetchall()]
     conn.close()
-    saved_player = session.get('selected_player', '')
-    print(f"DEBUG secret_talent: name={name}, saved_player={saved_player}")
-    # Passa i player con talento e la lista nomi ordinata al template
-    return render_template('secret_talent.html', name=name, players=players_with_talent, players_names_sorted=players_names_sorted, previous_guesses=previous_guesses, saved_player=saved_player)
+    return render_template('secret_talent.html', name=name, players=players_with_talent,
+                           players_names_sorted=players_names_sorted, previous_guesses=previous_guesses,
+                           saved_player=sget('selected_player'))
 
-@app.route('/organizer')
-def organizer():
+
+# ==================== VOTING (not offered on the landing page yet) ====================
+
+@app.route('/e/<code>/tshirt_voting')
+@feature_required('tshirt')
+def tshirt_voting():
+    name = get_current_user()
+    if not name:
+        flash("Please enter your name first")
+        return redirect(url_for('index'))
+
+    conn = get_db_conn()
+    row = conn.execute("SELECT voted_for FROM tshirt_votes WHERE event_code=? AND voter=?", (g.code, name)).fetchone()
+    conn.close()
+    return render_template('tshirt_voting.html', name=name, players=list_participants(), has_voted=row is not None,
+                           voted_for=row[0] if row else None, saved_vote=sget('selected_tshirt_vote'))
+
+
+@app.route('/e/<code>/submit_tshirt_vote', methods=['POST'])
+@feature_required('tshirt')
+def submit_tshirt_vote():
+    name = clean_name(request.form.get('voter', ''))
+    voted_for = clean_name(request.form.get('voted_for', ''))
+    if not participant_exists(name) or not participant_exists(voted_for):
+        flash("Missing information")
+        return redirect(url_for('tshirt_voting'))
+
+    conn = get_db_conn()
+    if conn.execute("SELECT COUNT(*) FROM tshirt_votes WHERE event_code=? AND voter=?", (g.code, name)).fetchone()[0] > 0:
+        flash("You have already voted!")
+    else:
+        conn.execute("INSERT INTO tshirt_votes (event_code, voter, voted_for, timestamp) VALUES (?,?,?,?)",
+                     (g.code, name, voted_for, datetime.datetime.now().isoformat()))
+        conn.commit()
+        flash("Your vote has been recorded!")
+    conn.close()
+    return redirect(url_for('tshirt_voting', name=name))
+
+
+# ==================== GROUP MISSIONS ====================
+
+@app.route('/e/<code>/group_missions', methods=['GET', 'POST'])
+@feature_required('group_missions')
+def group_missions():
+    force_select = request.args.get('force_select', '') == '1'
+    name = clean_name(request.form.get('name', '')) or get_current_user()
+    if not participant_exists(name):
+        flash("Please enter your name first")
+        return redirect(url_for('index'))
+    sset('current_user', name)
+
+    groups = get_group_missions(g.event['theme'])
+    if force_select:
+        table = clean_text(request.form.get('table', ''), 60)
+    else:
+        table = clean_text(request.form.get('table', '') or request.args.get('table', ''), 60) or sget('selected_table')
+
+    if not table and not force_select:
+        conn = get_db_conn()
+        row = conn.execute("SELECT table_name FROM group_submissions WHERE event_code=? AND participant=? LIMIT 1",
+                           (g.code, name)).fetchone()
+        conn.close()
+        if row:
+            table = row[0]
+
+    if table:
+        sset('selected_table', table)
+
+    if table:
+        table_missions = next((tm['missions'] for tm in groups if tm['table'] == table), None)
+        if not table_missions:
+            flash("Table not found")
+            spop('selected_table')
+            return redirect(url_for('group_missions'))
+
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT mission_id, completed, riddle_answer, photo_filename FROM group_submissions WHERE event_code=? AND participant=? AND table_name=?",
+                  (g.code, name, table))
+        submissions = {r[0]: {'completed': r[1], 'riddle_answer': r[2] or '', 'photo_filename': r[3] or ''} for r in c.fetchall()}
+
+        if not submissions:
+            for mission in table_missions:
+                c.execute("INSERT INTO group_submissions (event_code, participant, table_name, mission_id, mission_name, completed, riddle_answer, photo_filename) VALUES (?,?,?,?,?,?,?,?)",
+                          (g.code, name, table, mission['id'], mission['name'], 0, '', ''))
+            conn.commit()
+            submissions = {m['id']: {'completed': 0, 'riddle_answer': '', 'photo_filename': ''} for m in table_missions}
+        conn.close()
+
+        return render_template('group_missions.html', name=name, table=table, missions=table_missions,
+                               submissions=submissions, tables=[tm['table'] for tm in groups])
+
+    return render_template('group_missions_select.html', tables=[tm['table'] for tm in groups],
+                           name=name, saved_table=sget('selected_table'))
+
+
+@app.route('/e/<code>/change_table')
+@feature_required('group_missions')
+def change_table():
+    spop('selected_table')
+    return redirect(url_for('group_missions', force_select='1'))
+
+
+@app.route('/e/<code>/submit_group_missions', methods=['POST'])
+@feature_required('group_missions')
+def submit_group_missions():
+    name = clean_name(request.form.get('participant', ''))
+    table = clean_text(request.form.get('table', ''), 60)
+    if not participant_exists(name) or not table:
+        flash("Missing information")
+        return redirect(url_for('group_missions'))
+
+    valid_ids = set()
+    for tm in get_group_missions(g.event['theme']):
+        if tm['table'] == table:
+            valid_ids = {m['id'] for m in tm['missions']}
+
     conn = get_db_conn()
     c = conn.cursor()
-    c.execute("SELECT id, name, difficulty FROM missions ORDER BY id")
-    missions = c.fetchall()
-    c.execute("SELECT participant, mission_id, filename, points, timestamp FROM submissions ORDER BY timestamp DESC")
-    submissions = c.fetchall()
-    conn.close()
-    return render_template('organizer.html', missions=missions, submissions=submissions)
+    for key in request.form.keys():
+        if not key.startswith("completed_"):
+            continue
+        try:
+            mission_id = int(key.split("_")[1])
+        except ValueError:
+            continue
+        if mission_id not in valid_ids:
+            continue
+        completed = request.form.get(key) == "on"
 
-@app.route('/login', methods=['GET', 'POST'])
+        photo_filename = ""
+        photo = request.files.get(f"photo_{mission_id}")
+        if photo and photo.filename and allowed_file(photo.filename):
+            photo_filename = save_photo(photo, name, table, f"mission{mission_id}")
+
+        c.execute("SELECT photo_filename FROM group_submissions WHERE event_code=? AND participant=? AND table_name=? AND mission_id=?",
+                  (g.code, name, table, mission_id))
+        row = c.fetchone()
+        existing_photo = row[0] if row and row[0] else ""
+        c.execute("UPDATE group_submissions SET completed=?, photo_filename=? WHERE event_code=? AND participant=? AND table_name=? AND mission_id=?",
+                  (1 if completed else 0, photo_filename or existing_photo, g.code, name, table, mission_id))
+    conn.commit()
+    conn.close()
+
+    flash("Group missions updated successfully!")
+    return redirect(url_for('group_missions', name=name, table=table))
+
+
+# ==================== HOST AREA ====================
+
+_failed_logins = {}
+
+
+def too_many_attempts(key):
+    now = time.time()
+    recent = [t for t in _failed_logins.get(key, []) if now - t < 600]
+    _failed_logins[key] = recent
+    return len(recent) >= 10
+
+
+@app.route('/e/<code>/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '').strip()
-        
-        if username == 'JBH' and password == '12345':
-            session['logged_in'] = True
+        key = (request.remote_addr, g.code)
+        if too_many_attempts(key):
+            flash('Too many attempts. Try again in a few minutes.')
+        elif check_password_hash(g.event['host_hash'], request.form.get('password', '')):
+            sset('host', True)
             flash('Login successful!')
             return redirect(url_for('dashboard'))
         else:
-            flash('Invalid username or password')
-    
+            _failed_logins.setdefault(key, []).append(time.time())
+            flash('Invalid password')
     return render_template('login.html')
 
-@app.route('/dashboard')
+
+@app.route('/e/<code>/logout')
+def logout():
+    spop('host')
+    flash('Logged out successfully')
+    return redirect(url_for('login'))
+
+
+def event_score_rows(c):
+    """Raw data of the event used by dashboard and leaderboard."""
+    c.execute("SELECT DISTINCT participant FROM submissions WHERE event_code=? ORDER BY participant", (g.code,))
+    participants = [r[0] for r in c.fetchall()]
+    return participants
+
+
+def group_mission_info(theme):
+    info = {}
+    for tm in get_group_missions(theme):
+        for m in tm['missions']:
+            info[(tm['table'], m['id'])] = m
+    return info
+
+
+@app.route('/e/<code>/dashboard')
+@host_required
 def dashboard():
-    if not session.get('logged_in'):
-        flash('Please login first')
-        return redirect(url_for('login'))
-    
     conn = get_db_conn()
     c = conn.cursor()
-    
-    # Get all participants with their scores
-    c.execute("SELECT DISTINCT participant FROM submissions ORDER BY participant")
-    participants = [row[0] for row in c.fetchall()]
-    
-    # Get all data
-    c.execute("SELECT id, name, difficulty FROM missions ORDER BY id")
-    missions = {row[0]: {'name': row[1], 'difficulty': row[2]} for row in c.fetchall()}
-    
-    c.execute("SELECT participant, mission_id, filename, people_selected, points FROM submissions")
+    participants = event_score_rows(c)
+
+    c.execute("SELECT id, name, difficulty FROM missions WHERE event_code=? ORDER BY id", (g.code,))
+    missions = {r[0]: {'name': r[1], 'difficulty': r[2]} for r in c.fetchall()}
+
+    c.execute("SELECT participant, mission_id, filename, people_selected, points FROM submissions WHERE event_code=?", (g.code,))
     submissions = c.fetchall()
-    
-    c.execute("SELECT guesser, target, guessed_person, guessed_talent, correct, timestamp FROM talent_guesses ORDER BY timestamp")
+
+    c.execute("SELECT guesser, target, guessed_person, guessed_talent, correct, timestamp FROM talent_guesses WHERE event_code=? ORDER BY timestamp", (g.code,))
     talent_guesses = c.fetchall()
-    
-    # Include riddle_answer e photo_filename nella query
-    c.execute("SELECT participant, table_name, mission_id, mission_name, completed, riddle_answer, photo_filename FROM group_submissions")
+
+    c.execute("SELECT participant, table_name, mission_id, mission_name, completed, riddle_answer, photo_filename FROM group_submissions WHERE event_code=?", (g.code,))
     group_submissions = c.fetchall()
-    
-    c.execute("SELECT voter, voted_for, timestamp FROM tshirt_votes")
+
+    c.execute("SELECT voter, voted_for, timestamp FROM tshirt_votes WHERE event_code=?", (g.code,))
     tshirt_votes = c.fetchall()
-    
     conn.close()
-    
-    # Organize data by participant
+
     participant_data = {}
     for participant in participants:
         participant_data[participant] = {
-            'total_score': 0,
-            'individual_score': 0,
-            'group_score': 0,
-            'talent_score': 0,
-            'missions': {},
-            'group_missions': {},
-            'talent_guesses': [],
-            'tshirt_votes_received': 0,
-            'voted_for': None  # Chi ha votato questo giocatore
+            'total_score': 0, 'individual_score': 0, 'group_score': 0, 'talent_score': 0,
+            'missions': {}, 'group_missions': {}, 'talent_guesses': [],
+            'tshirt_votes_received': 0, 'voted_for': None
         }
-    
-    # Process individual missions
-    for sub in submissions:
-        participant, mission_id, filename, people_selected, points = sub
+
+    for participant, mission_id, filename, people_selected, points in submissions:
         if participant in participant_data:
             if filename != 'NOT COMPLETED':
                 participant_data[participant]['individual_score'] += points
@@ -650,655 +986,262 @@ def dashboard():
                 'points': points,
                 'mission_name': missions.get(mission_id, {}).get('name', 'Unknown')
             }
-    
-    # Process group missions
-    for gsub in group_submissions:
-        participant, table_name, mission_id, mission_name, completed, riddle_answer, photo_filename = gsub
-        if participant in participant_data:
-            # Get mission info from GROUP_MISSIONS
-            points = 0
-            has_riddle = False
-            for tm in GROUP_MISSIONS:
-                if tm['table'] == table_name:
-                    for mission in tm['missions']:
-                        if mission['id'] == mission_id:
-                            points = mission['points']
-                            has_riddle = 'riddle' in mission
-                            break
-            
-            # Per missioni con riddle, verifica se la risposta è corretta
-            riddle_correct = None
-            if has_riddle:
-                if riddle_answer:
-                    riddle_correct = check_riddle_answer(riddle_answer)
-                else:
-                    riddle_correct = False
-                
-                # Punti assegnati SOLO se risposta corretta
-                if completed and riddle_correct:
-                    participant_data[participant]['group_score'] += points
-                    participant_data[participant]['total_score'] += points
-            else:
-                # Missioni normali (senza riddle)
-                if completed:
-                    participant_data[participant]['group_score'] += points
-                    participant_data[participant]['total_score'] += points
-            
-            if table_name not in participant_data[participant]['group_missions']:
-                participant_data[participant]['group_missions'][table_name] = []
-            
-            participant_data[participant]['group_missions'][table_name].append({
-                'mission_name': mission_name,
-                'points': points,
-                'completed': completed,
-                'riddle_answer': riddle_answer or '',
-                'riddle_correct': riddle_correct,
-                'has_riddle': has_riddle,
-                'photo_filename': photo_filename or ''
-            })
-    
-    # Process talent guesses - 15 punti per ogni guess corretto
-    TALENT_POINTS = 15
-    for guess in talent_guesses:
-        guesser, target, guessed_person, guessed_talent, correct, timestamp = guess
+
+    group_info = group_mission_info(g.event['theme'])
+    for participant, table_name, mission_id, mission_name, completed, riddle_answer, photo_filename in group_submissions:
+        if participant not in participant_data:
+            continue
+        mission = group_info.get((table_name, mission_id), {})
+        points = mission.get('points', 0)
+        has_riddle = 'riddle' in mission
+
+        riddle_correct = None
+        if has_riddle:
+            riddle_correct = check_riddle_answer(riddle_answer) if riddle_answer else False
+            if completed and riddle_correct:
+                participant_data[participant]['group_score'] += points
+                participant_data[participant]['total_score'] += points
+        elif completed:
+            participant_data[participant]['group_score'] += points
+            participant_data[participant]['total_score'] += points
+
+        participant_data[participant]['group_missions'].setdefault(table_name, []).append({
+            'mission_name': mission_name,
+            'points': points,
+            'completed': completed,
+            'riddle_answer': riddle_answer or '',
+            'riddle_correct': riddle_correct,
+            'has_riddle': has_riddle,
+            'photo_filename': photo_filename or ''
+        })
+
+    for guesser, target, guessed_person, guessed_talent, correct, timestamp in talent_guesses:
         if guesser in participant_data:
             participant_data[guesser]['talent_guesses'].append({
-                'target': target,  # Chi ha veramente quel talento
-                'guessed_person': guessed_person,  # Chi il guesser pensa sia
-                'talent': guessed_talent,
-                'correct': correct,
-                'timestamp': timestamp
+                'target': target, 'guessed_person': guessed_person, 'talent': guessed_talent,
+                'correct': correct, 'timestamp': timestamp
             })
-            # Aggiungi punti se il guess è corretto
             if correct:
                 participant_data[guesser]['talent_score'] += TALENT_POINTS
                 participant_data[guesser]['total_score'] += TALENT_POINTS
-    
-    # Process T-Shirt votes
-    for vote in tshirt_votes:
-        voter, voted_for, timestamp = vote
-        # Salva per chi ha votato questo giocatore
+
+    for voter, voted_for, timestamp in tshirt_votes:
         if voter in participant_data:
             participant_data[voter]['voted_for'] = voted_for
-        # Incrementa i voti ricevuti
         if voted_for in participant_data:
             participant_data[voted_for]['tshirt_votes_received'] += 1
-    
-    return render_template('dashboard.html', participant_data=participant_data, missions=missions, players=PLAYERS)
+
+    return render_template('dashboard.html', participant_data=participant_data, missions=missions,
+                           players=list_participants())
+
 
 # ==================== ADMIN ERASE ROUTES ====================
 
-@app.route('/admin/erase_all/<participant>')
-def erase_all(participant):
-    """Cancella tutti i dati di un partecipante"""
-    if not session.get('logged_in'):
-        return redirect(url_for('login'))
-    
+def erase(tables, participant):
     conn = get_db_conn()
-    c = conn.cursor()
-    c.execute("DELETE FROM submissions WHERE participant=?", (participant,))
-    c.execute("DELETE FROM group_submissions WHERE participant=?", (participant,))
-    c.execute("DELETE FROM talent_guesses WHERE guesser=?", (participant,))
-    c.execute("DELETE FROM tshirt_votes WHERE voter=?", (participant,))
+    for table, column in tables:
+        conn.execute(f"DELETE FROM {table} WHERE event_code=? AND {column}=?", (g.code, participant))
     conn.commit()
     conn.close()
-    
+
+
+@app.route('/e/<code>/admin/erase_all/<participant>')
+@host_required
+def erase_all(participant):
+    erase([('submissions', 'participant'), ('group_submissions', 'participant'),
+           ('talent_guesses', 'guesser'), ('tshirt_votes', 'voter')], participant)
     flash(f"All data for {participant} has been erased!")
     return redirect(url_for('dashboard'))
 
-@app.route('/admin/erase_individual/<participant>')
+
+@app.route('/e/<code>/admin/erase_individual/<participant>')
+@host_required
 def erase_individual(participant):
-    """Cancella le missioni individuali di un partecipante"""
-    if not session.get('logged_in'):
-        return redirect(url_for('login'))
-    
-    conn = get_db_conn()
-    c = conn.cursor()
-    c.execute("DELETE FROM submissions WHERE participant=?", (participant,))
-    conn.commit()
-    conn.close()
-    
+    erase([('submissions', 'participant')], participant)
     flash(f"Individual missions for {participant} have been erased!")
     return redirect(url_for('dashboard'))
 
-@app.route('/admin/erase_group/<participant>')
+
+@app.route('/e/<code>/admin/erase_group/<participant>')
+@host_required
 def erase_group(participant):
-    """Cancella le missioni di gruppo di un partecipante"""
-    if not session.get('logged_in'):
-        return redirect(url_for('login'))
-    
-    conn = get_db_conn()
-    c = conn.cursor()
-    c.execute("DELETE FROM group_submissions WHERE participant=?", (participant,))
-    conn.commit()
-    conn.close()
-    
+    erase([('group_submissions', 'participant')], participant)
     flash(f"Group missions for {participant} have been erased!")
     return redirect(url_for('dashboard'))
 
-@app.route('/admin/erase_talent/<participant>')
+
+@app.route('/e/<code>/admin/erase_talent/<participant>')
+@host_required
 def erase_talent(participant):
-    """Cancella i guess del secret talent di un partecipante"""
-    if not session.get('logged_in'):
-        return redirect(url_for('login'))
-    
-    conn = get_db_conn()
-    c = conn.cursor()
-    c.execute("DELETE FROM talent_guesses WHERE guesser=?", (participant,))
-    conn.commit()
-    conn.close()
-    
+    erase([('talent_guesses', 'guesser')], participant)
     flash(f"Secret talent guesses for {participant} have been erased!")
     return redirect(url_for('dashboard'))
 
-@app.route('/admin/erase_vote/<participant>')
+
+@app.route('/e/<code>/admin/erase_vote/<participant>')
+@host_required
 def erase_vote(participant):
-    """Cancella il voto t-shirt di un partecipante"""
-    if not session.get('logged_in'):
-        return redirect(url_for('login'))
-    
-    conn = get_db_conn()
-    c = conn.cursor()
-    c.execute("DELETE FROM tshirt_votes WHERE voter=?", (participant,))
-    conn.commit()
-    conn.close()
-    
-    flash(f"T-shirt vote by {participant} has been erased!")
+    erase([('tshirt_votes', 'voter')], participant)
+    flash(f"Vote by {participant} has been erased!")
     return redirect(url_for('dashboard'))
 
-@app.route('/admin/erase_all_data')
+
+@app.route('/e/<code>/admin/erase_all_data')
+@host_required
 def erase_all_data():
-    """Cancella TUTTI i dati del gioco"""
-    if not session.get('logged_in'):
-        return redirect(url_for('login'))
-    
     conn = get_db_conn()
-    c = conn.cursor()
-    c.execute("DELETE FROM submissions")
-    c.execute("DELETE FROM group_submissions")
-    c.execute("DELETE FROM talent_guesses")
-    c.execute("DELETE FROM tshirt_votes")
+    for table in ('submissions', 'group_submissions', 'talent_guesses', 'tshirt_votes'):
+        conn.execute(f"DELETE FROM {table} WHERE event_code=?", (g.code,))
     conn.commit()
     conn.close()
-    
     flash("⚠️ ALL GAME DATA has been erased!")
     return redirect(url_for('dashboard'))
 
-# ==================== END ADMIN ERASE ROUTES ====================
 
-@app.route('/leaderboard')
+# ==================== LEADERBOARD ====================
+
+TIEBREAK_QUESTIONS = [
+    {'question': "How many continents are there?", 'answer': "7"},
+    {'question': "What is the chemical symbol for gold?", 'answer': "Au"},
+    {'question': "In which year did humans first land on the Moon?", 'answer': "1969"},
+]
+
+
+@app.route('/e/<code>/leaderboard')
+@host_required
 def leaderboard():
-    """Mostra la classifica con grafici"""
-    if not session.get('logged_in'):
-        flash('Please login first')
-        return redirect(url_for('login'))
-    
     conn = get_db_conn()
     c = conn.cursor()
-    
-    # Get all participants
-    c.execute("SELECT DISTINCT participant FROM submissions ORDER BY participant")
-    participants = [row[0] for row in c.fetchall()]
-    
-    # Get submissions for scores
-    c.execute("SELECT participant, mission_id, filename, points FROM submissions")
+    participants = event_score_rows(c)
+
+    c.execute("SELECT participant, mission_id, filename, points FROM submissions WHERE event_code=?", (g.code,))
     submissions = c.fetchall()
-    
-    # Get group submissions with riddle_answer
-    c.execute("SELECT participant, table_name, mission_id, completed, riddle_answer FROM group_submissions")
+    c.execute("SELECT participant, table_name, mission_id, completed, riddle_answer FROM group_submissions WHERE event_code=?", (g.code,))
     group_submissions = c.fetchall()
-    
-    # Get talent guesses
-    c.execute("SELECT guesser, correct FROM talent_guesses")
+    c.execute("SELECT guesser, correct FROM talent_guesses WHERE event_code=?", (g.code,))
     talent_guesses = c.fetchall()
-    
-    # Get tshirt votes
-    c.execute("SELECT voted_for, COUNT(*) as votes FROM tshirt_votes GROUP BY voted_for ORDER BY votes DESC")
+    c.execute("SELECT voted_for, COUNT(*) AS votes FROM tshirt_votes WHERE event_code=? GROUP BY voted_for ORDER BY votes DESC", (g.code,))
     tshirt_results = c.fetchall()
-    
     conn.close()
-    
-    # Calculate scores per participant
-    TALENT_POINTS = 15
-    scores = {}
-    for participant in participants:
-        scores[participant] = {'individual': 0, 'group': 0, 'talent': 0, 'total': 0}
-    
-    # Individual scores
-    for sub in submissions:
-        participant, mission_id, filename, points = sub
+
+    scores = {p: {'individual': 0, 'group': 0, 'talent': 0, 'total': 0, 'missions_completed': 0} for p in participants}
+
+    for participant, mission_id, filename, points in submissions:
         if participant in scores and filename != 'NOT COMPLETED':
             scores[participant]['individual'] += points
-    
-    # Group scores
-    for gsub in group_submissions:
-        participant, table_name, mission_id, completed, riddle_answer = gsub
+            scores[participant]['missions_completed'] += 1
+
+    group_info = group_mission_info(g.event['theme'])
+    for participant, table_name, mission_id, completed, riddle_answer in group_submissions:
         if participant in scores and completed:
-            # Get mission info from GROUP_MISSIONS
-            for tm in GROUP_MISSIONS:
-                if tm['table'] == table_name:
-                    for mission in tm['missions']:
-                        if mission['id'] == mission_id:
-                            has_riddle = 'riddle' in mission
-                            points = mission['points']
-                            
-                            if has_riddle:
-                                # Punti solo se risposta corretta
-                                if riddle_answer and check_riddle_answer(riddle_answer):
-                                    scores[participant]['group'] += points
-                            else:
-                                # Missioni normali
-                                scores[participant]['group'] += points
-                            break
-    
-    # Talent scores - 15 punti per ogni guess corretto
-    for guess in talent_guesses:
-        guesser, correct = guess
+            mission = group_info.get((table_name, mission_id))
+            if not mission:
+                continue
+            if 'riddle' in mission and not (riddle_answer and check_riddle_answer(riddle_answer)):
+                continue
+            scores[participant]['group'] += mission['points']
+            scores[participant]['missions_completed'] += 1
+
+    for guesser, correct in talent_guesses:
         if guesser in scores and correct:
             scores[guesser]['talent'] += TALENT_POINTS
-    
-    # Calculate totals
-    for participant in scores:
-        scores[participant]['total'] = scores[participant]['individual'] + scores[participant]['group'] + scores[participant]['talent']
-    
-    # Count completed missions for tie-breaker
-    missions_completed = {}
-    for participant in participants:
-        missions_completed[participant] = 0
-    
-    # Count individual missions completed
-    for sub in submissions:
-        participant, mission_id, filename, points = sub
-        if participant in missions_completed and filename != 'NOT COMPLETED':
-            missions_completed[participant] += 1
-    
-    # Count group missions completed
-    for gsub in group_submissions:
-        participant, table_name, mission_id, completed, riddle_answer = gsub
-        if participant in missions_completed and completed:
-            missions_completed[participant] += 1
-    
-    # Add missions_completed to scores
-    for participant in scores:
-        scores[participant]['missions_completed'] = missions_completed.get(participant, 0)
-    
-    # Check for manual winner override
-    manual_winner = session.get('manual_winner', None)
-    
-    # Sort by: 1) manual winner first, 2) total score, 3) missions completed (tie-breaker)
+
+    for data in scores.values():
+        data['total'] = data['individual'] + data['group'] + data['talent']
+
+    manual_winner = sget('manual_winner', None)
+
     def sort_key(item):
         participant, data = item
-        is_winner = 1 if participant == manual_winner else 0
-        return (is_winner, data['total'], data['missions_completed'])
-    
+        return (1 if participant == manual_winner else 0, data['total'], data['missions_completed'])
+
     sorted_scores = sorted(scores.items(), key=sort_key, reverse=True)
-    
-    # Detect ties at the top
+
     tied_participants = []
     if len(sorted_scores) >= 2 and not manual_winner:
-        top_score = sorted_scores[0][1]['total']
-        top_missions = sorted_scores[0][1]['missions_completed']
-        
-        for participant, data in sorted_scores:
-            if data['total'] == top_score and data['missions_completed'] == top_missions:
-                tied_participants.append(participant)
-        
-        # Only consider it a tie if more than 1 person
+        top = sorted_scores[0][1]
+        tied_participants = [p for p, d in sorted_scores
+                             if d['total'] == top['total'] and d['missions_completed'] == top['missions_completed']]
         if len(tied_participants) <= 1:
             tied_participants = []
-    
-    # Prepare data for charts
+
     leaderboard_data = {
         'labels': [p[0] for p in sorted_scores],
         'individual_scores': [p[1]['individual'] for p in sorted_scores],
         'group_scores': [p[1]['group'] for p in sorted_scores],
         'total_scores': [p[1]['total'] for p in sorted_scores]
     }
-    
-    tshirt_data = {
-        'labels': [r[0] for r in tshirt_results],
-        'votes': [r[1] for r in tshirt_results]
-    }
-    
-    # Quiz questions for tie-breaker
-    quiz_questions = [
-        {
-            'question': "What's the name of Allseas' record-breaking vessel capable of installing or removing entire offshore platform topsides or jackets in a single lift?",
-            'answer': "Pioneering Spirit"
-        },
-        {
-            'question': "In which year was Allseas founded?",
-            'answer': "1985"
-        },
-        {
-            'question': "What is the approximate topside lift capacity (in tonnes) of the Pioneering Spirit?",
-            'answer': "48,000 tonnes"
-        }
-    ]
-    
-    return render_template('leaderboard.html', 
-                         leaderboard_data=leaderboard_data, 
-                         tshirt_data=tshirt_data,
-                         sorted_scores=sorted_scores,
-                         tshirt_results=tshirt_results,
-                         tied_participants=tied_participants,
-                         manual_winner=manual_winner,
-                         quiz_questions=quiz_questions)
+    tshirt_data = {'labels': [r[0] for r in tshirt_results], 'votes': [r[1] for r in tshirt_results]}
 
-@app.route('/mark_winner/<participant>')
+    return render_template('leaderboard.html', leaderboard_data=leaderboard_data, tshirt_data=tshirt_data,
+                           sorted_scores=sorted_scores, tshirt_results=tshirt_results,
+                           tied_participants=tied_participants, manual_winner=manual_winner,
+                           quiz_questions=TIEBREAK_QUESTIONS)
+
+
+@app.route('/e/<code>/mark_winner/<participant>')
+@host_required
 def mark_winner(participant):
-    """Segna manualmente il vincitore in caso di pareggio"""
-    if not session.get('logged_in'):
-        flash('Please login first')
-        return redirect(url_for('login'))
-    
-    session['manual_winner'] = participant
+    sset('manual_winner', participant)
     flash(f"🏆 {participant} has been marked as the winner!")
     return redirect(url_for('leaderboard'))
 
-@app.route('/clear_winner')
+
+@app.route('/e/<code>/clear_winner')
+@host_required
 def clear_winner():
-    """Rimuove il vincitore manuale"""
-    if not session.get('logged_in'):
-        flash('Please login first')
-        return redirect(url_for('login'))
-    
-    session.pop('manual_winner', None)
+    spop('manual_winner')
     flash("Winner selection has been cleared.")
     return redirect(url_for('leaderboard'))
 
-# ==================== PHOTOS ROUTES ====================
+
+# ==================== PHOTOS ====================
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     """Serve uploaded files"""
     return send_from_directory(UPLOAD_FOLDER, filename)
 
-@app.route('/pictures')
+
+@app.route('/e/<code>/pictures')
+@host_required
 def pictures():
-    """Pictures of the Night - Gallery of all uploaded photos"""
-    if not session.get('logged_in'):
-        flash('Please login first')
-        return redirect(url_for('login'))
-    
+    """Gallery of all photos uploaded in this event"""
+    image_filter = "(%s LIKE '%%.jpg' OR %s LIKE '%%.jpeg' OR %s LIKE '%%.png' OR %s LIKE '%%.gif' OR %s LIKE '%%.webp')"
     conn = get_db_conn()
     c = conn.cursor()
-    
-    # Get all submissions with photos (files that end with image extensions)
-    c.execute("""
-        SELECT s.participant, s.mission_id, s.filename, s.timestamp, m.name as mission_name
+
+    c.execute(f"""
+        SELECT s.participant, s.mission_id, s.filename, s.timestamp, m.name
         FROM submissions s
         JOIN missions m ON s.mission_id = m.id
-        WHERE s.filename LIKE '%.jpg' 
-           OR s.filename LIKE '%.jpeg' 
-           OR s.filename LIKE '%.png' 
-           OR s.filename LIKE '%.gif'
-           OR s.filename LIKE '%.webp'
+        WHERE s.event_code = ? AND {image_filter % (('s.filename',) * 5)}
         ORDER BY s.timestamp DESC
-    """)
-    
+    """, (g.code,))
     photos = []
-    for row in c.fetchall():
-        participant, mission_id, filename, timestamp, mission_name = row
-        # Check if file actually exists
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        if os.path.exists(filepath):
-            photos.append({
-                'participant': participant,
-                'mission_id': mission_id,
-                'filename': filename,
-                'timestamp': timestamp,
-                'mission_name': mission_name,
-                'type': 'individual'
-            })
-    
-    # Also get group mission photos
-    c.execute("""
+    for participant, mission_id, filename, timestamp, mission_name in c.fetchall():
+        if os.path.exists(os.path.join(UPLOAD_FOLDER, filename)):
+            photos.append({'participant': participant, 'mission_id': mission_id, 'filename': filename,
+                           'timestamp': timestamp, 'mission_name': mission_name, 'type': 'individual'})
+
+    c.execute(f"""
         SELECT participant, mission_id, mission_name, photo_filename, table_name
         FROM group_submissions
-        WHERE photo_filename LIKE '%.jpg' 
-           OR photo_filename LIKE '%.jpeg' 
-           OR photo_filename LIKE '%.png' 
-           OR photo_filename LIKE '%.gif'
-           OR photo_filename LIKE '%.webp'
-    """)
-    
-    for row in c.fetchall():
-        participant, mission_id, mission_name, filename, table_name = row
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        if os.path.exists(filepath):
-            photos.append({
-                'participant': participant,
-                'mission_id': mission_id,
-                'filename': filename,
-                'timestamp': '',
-                'mission_name': f"{mission_name} ({table_name})",
-                'type': 'group'
-            })
-    
+        WHERE event_code = ? AND {image_filter % (('photo_filename',) * 5)}
+    """, (g.code,))
+    for participant, mission_id, mission_name, filename, table_name in c.fetchall():
+        if os.path.exists(os.path.join(UPLOAD_FOLDER, filename)):
+            photos.append({'participant': participant, 'mission_id': mission_id, 'filename': filename,
+                           'timestamp': '', 'mission_name': f"{mission_name} ({table_name})", 'type': 'group'})
     conn.close()
-    
     return render_template('pictures.html', photos=photos)
 
-# ==================== END PHOTOS ROUTES ====================
 
-@app.route('/logout')
-def logout():
-    session.pop('logged_in', None)
-    flash('Logged out successfully')
-    return redirect(url_for('login'))
+init_db()
 
-@app.route('/tshirt_voting', methods=['GET', 'POST'])
-def tshirt_voting():
-    name = get_current_user()
-    
-    # Ordina i players alfabeticamente per nome
-    players_sorted = sorted(PLAYERS, key=lambda p: p['name'])
-    
-    # Se abbiamo un nome (da sessione o URL), mostra direttamente la pagina di voto
-    if name:
-        conn = get_db_conn()
-        c = conn.cursor()
-        
-        # Check if user already voted
-        c.execute("SELECT voted_for FROM tshirt_votes WHERE voter=?", (name,))
-        vote_row = c.fetchone()
-        has_voted = vote_row is not None
-        voted_for = vote_row[0] if vote_row else None
-        
-        conn.close()
-        
-        # Get saved selection from session
-        saved_vote = session.get('selected_tshirt_vote', '')
-        
-        return render_template('tshirt_voting.html', name=name, players=players_sorted, has_voted=has_voted, voted_for=voted_for, saved_vote=saved_vote)
-    
-    # Se non abbiamo nome, redirect alla home
-    flash("Please select your name first")
-    return redirect(url_for('index'))
-
-@app.route('/submit_tshirt_vote', methods=['POST'])
-def submit_tshirt_vote():
-    name = request.form.get('voter', '').strip()
-    voted_for = request.form.get('voted_for', '').strip()
-    
-    if not name or not voted_for:
-        flash("Missing information")
-        return redirect(url_for('tshirt_voting'))
-    
-    conn = get_db_conn()
-    c = conn.cursor()
-    
-    # Check if already voted
-    c.execute("SELECT COUNT(*) FROM tshirt_votes WHERE voter=?", (name,))
-    if c.fetchone()[0] > 0:
-        flash("You have already voted!")
-        conn.close()
-        return redirect(url_for('tshirt_voting') + f"?name={name}")
-    
-    # Record vote
-    c.execute("INSERT INTO tshirt_votes (voter, voted_for, timestamp) VALUES (?,?,?)",
-              (name, voted_for, datetime.datetime.now().isoformat()))
-    conn.commit()
-    conn.close()
-    
-    flash("Your vote has been recorded!")
-    return redirect(url_for('tshirt_voting') + f"?name={name}")
-
-@app.route('/group_missions', methods=['GET', 'POST'])
-def group_missions():
-    # Controlla se l'utente vuole forzare la selezione del tavolo
-    force_select = request.args.get('force_select', '') == '1'
-    
-    # Ottieni il nome da POST, GET o sessione
-    name = request.form.get('name', '') or request.args.get('name', '') or session.get('current_user', '')
-    name = name.strip()
-    
-    # Se force_select, non caricare il tavolo dalla sessione o DB
-    if force_select:
-        table = request.form.get('table', '').strip()
-    else:
-        table = request.form.get('table', '') or request.args.get('table', '') or session.get('selected_table', '')
-        table = table.strip()
-    
-    # Aggiorna la sessione se abbiamo un nome valido
-    if name:
-        session['current_user'] = name
-    
-    # Se non abbiamo un tavolo e non stiamo forzando la selezione, controlla se l'utente ne ha già uno nel DB
-    if not table and name and not force_select:
-        conn = get_db_conn()
-        c = conn.cursor()
-        c.execute("SELECT DISTINCT table_name FROM group_submissions WHERE participant=? LIMIT 1", (name,))
-        row = c.fetchone()
-        conn.close()
-        if row:
-            table = row[0]
-    
-    # Salva il tavolo nella sessione
-    if table:
-        session['selected_table'] = table
-    
-    # Se abbiamo sia nome che tavolo, mostra direttamente le missioni
-    if name and table:
-        # Find missions for the selected table
-        table_missions = None
-        for tm in GROUP_MISSIONS:
-            if tm['table'] == table:
-                table_missions = tm['missions']
-                break
-        
-        if not table_missions:
-            flash("Table not found")
-            session.pop('selected_table', None)
-            return redirect(url_for('group_missions', name=name))
-        
-        conn = get_db_conn()
-        c = conn.cursor()
-        
-        # Get or create group mission submissions (include photo_filename)
-        c.execute("SELECT mission_id, completed, riddle_answer, photo_filename FROM group_submissions WHERE participant=? AND table_name=?", (name, table))
-        rows = c.fetchall()
-        submissions = {row[0]: {'completed': row[1], 'riddle_answer': row[2] or '', 'photo_filename': row[3] or ''} for row in rows}
-        
-        # If no submissions exist, create them
-        if not submissions:
-            for mission in table_missions:
-                c.execute("INSERT INTO group_submissions (participant, table_name, mission_id, mission_name, completed, riddle_answer, photo_filename) VALUES (?,?,?,?,?,?,?)",
-                          (name, table, mission['id'], mission['name'], 0, '', ''))
-            conn.commit()
-            submissions = {mission['id']: {'completed': 0, 'riddle_answer': '', 'photo_filename': ''} for mission in table_missions}
-        
-        conn.close()
-        
-        return render_template('group_missions.html', name=name, table=table, 
-                             missions=table_missions, submissions=submissions, 
-                             tables=[tm['table'] for tm in GROUP_MISSIONS])
-    
-    # Se è GET senza tavolo, mostra la pagina di selezione tabella
-    tables = [tm['table'] for tm in GROUP_MISSIONS]
-    saved_table = session.get('selected_table', '')
-    print(f"DEBUG group_missions GET: name={name}, saved_table={saved_table}")
-    return render_template('group_missions_select.html', tables=tables, people=PEOPLE, name=name, saved_table=saved_table)
-
-@app.route('/change_table')
-def change_table():
-    """Permette di cambiare tavolo cancellando la selezione dalla sessione"""
-    session.pop('selected_table', None)
-    return redirect(url_for('group_missions', force_select='1'))
-
-@app.route('/restart')
-def restart():
-    """Riavvia il gioco cancellando tutta la sessione e tornando alla pagina di benvenuto"""
-    session.clear()
-    return redirect(url_for('welcome'))
-
-@app.route('/submit_group_missions', methods=['POST'])
-def submit_group_missions():
-    name = request.form.get('participant', '').strip()
-    table = request.form.get('table', '').strip()
-    
-    if not name or not table:
-        flash("Missing information")
-        return redirect(url_for('group_missions'))
-    
-    conn = get_db_conn()
-    c = conn.cursor()
-    
-    # Find missions for the table to get points and names
-    table_missions = {}
-    for tm in GROUP_MISSIONS:
-        if tm['table'] == table:
-            for mission in tm['missions']:
-                table_missions[mission['id']] = {'points': mission['points'], 'name': mission['name']}
-            break
-    
-    # Update submissions
-    for key in request.form.keys():
-        if key.startswith("completed_"):
-            mission_id = int(key.split("_")[1])
-            completed = request.form.get(key) == "on"
-            
-            # Check for photo upload
-            photo_filename = ""
-            photo_key = f"photo_{mission_id}"
-            if photo_key in request.files:
-                photo = request.files[photo_key]
-                if photo and photo.filename and allowed_file(photo.filename):
-                    ext = photo.filename.rsplit('.', 1)[1].lower()
-                    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-                    safe_name = secure_filename(name.replace(' ', '_'))
-                    safe_table = secure_filename(table.replace(' ', '_'))
-                    filename = f"{safe_name}_{safe_table}_mission{mission_id}_{timestamp}.{ext}"
-                    filepath = os.path.join(UPLOAD_FOLDER, filename)
-                    photo.save(filepath)
-                    photo_filename = filename
-            
-            # Update or keep existing photo
-            c.execute("SELECT photo_filename FROM group_submissions WHERE participant=? AND table_name=? AND mission_id=?",
-                      (name, table, mission_id))
-            row = c.fetchone()
-            existing_photo = row[0] if row and row[0] else ""
-            
-            # Use new photo if uploaded, otherwise keep existing
-            final_photo = photo_filename if photo_filename else existing_photo
-            
-            c.execute("UPDATE group_submissions SET completed=?, photo_filename=? WHERE participant=? AND table_name=? AND mission_id=?",
-                      (1 if completed else 0, final_photo, name, table, mission_id))
-    
-    conn.commit()
-    conn.close()
-    
-    flash("Group missions updated successfully!")
-    return redirect(url_for('group_missions') + f"?name={name}&table={table}")
-
-if __name__=="__main__":
-    init_db()
-    load_sample_missions(force_reload=False)
+if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
-    debug = os.environ.get('FLASK_ENV') != 'production'
-    app.run(host='0.0.0.0', port=port, debug=debug)
-else:
-    # Per Gunicorn in produzione
-    init_db()
-    load_sample_missions(force_reload=False)
+    host = os.environ.get('HOST', '127.0.0.1')
+    # The Werkzeug debugger must never be reachable from the network.
+    debug = os.environ.get('FLASK_ENV') != 'production' and host in ('127.0.0.1', 'localhost')
+    app.run(host=host, port=port, debug=debug)

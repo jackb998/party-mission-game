@@ -169,11 +169,11 @@
 <body>
 
 <div class="navbar">
-    <div class="navbar-left">🎮 Mission Game</div>
+    <div class="navbar-left">{{ event.icon }} {{ event.name }}</div>
     <div class="navbar-right">
-        <a href="{{ url_for('index') }}" class="nav-btn">📋 Missions</a>
-        <a href="{{ url_for('secret_talent') }}" class="nav-btn">🎭 Secret Talent</a>
-        <a href="{{ url_for('group_missions') }}" class="nav-btn active">👥 Group Missions</a>
+        {% if 'missions' in game_features %}<a href="{{ url_for('index', name=name) }}" class="nav-btn">📋 Missions</a>{% endif %}
+        {% if 'secret_talent' in game_features %}<a href="{{ url_for('secret_talent', name=name) }}" class="nav-btn">🎭 Secret Talent</a>{% endif %}
+        {% if 'group_missions' in game_features %}<a href="{{ url_for('group_missions', name=name) }}" class="nav-btn active">👥 Group Missions</a>{% endif %}
     </div>
 </div>
 
