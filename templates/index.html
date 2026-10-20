@@ -210,11 +210,13 @@
 <body>
 
 <div class="navbar">
-    <a href="{{ url_for('login') }}">🔐 Admin Login</a>
+    <a href="{{ url_for('welcome') }}">🏠 Home</a>
+    <a href="{{ url_for('login') }}">🔐 Host login</a>
 </div>
 
 <div class="container">
-    <h1>🎮 Mission Game</h1>
+    <h1>{{ event.icon }} {{ event.name }}</h1>
+    <p class="player-count" style="margin-top:-18px;">Game code: <strong>{{ event.code }}</strong></p>
 
     {% with messages = get_flashed_messages() %}
         {% if messages %}
@@ -226,149 +228,53 @@
         {% endif %}
     {% endwith %}
 
-    <div class="form-group">
-        <label for="nameInput">Enter your name:</label>
-        <div class="input-row">
-            <input type="text" id="nameInput" placeholder="Your name..." autocomplete="off">
-            <button type="button" class="add-btn" id="addBtn">Add</button>
+    <form method="POST" action="{{ url_for('index') }}">
+        <div class="form-group">
+            <label for="nameInput">Enter your name to join:</label>
+            <input type="text" id="nameInput" name="name" placeholder="Your name..." maxlength="40"
+                   autocomplete="off" required style="width:100%; margin-bottom:10px;">
         </div>
-    </div>
 
-    <div class="form-group" id="talentGroup" style="display:none;">
-        <label for="talentInput">Your secret talent (optional):</label>
-        <input type="text" id="talentInput" placeholder="e.g. I can whistle with my nose..." autocomplete="off" style="width:100%;">
-    </div>
+        {% if ask_talent %}
+        <div class="form-group">
+            <label for="talentInput">Your secret talent (optional):</label>
+            <input type="text" id="talentInput" name="talent" placeholder="e.g. I can whistle with my nose..."
+                   maxlength="200" autocomplete="off" style="width:100%;">
+        </div>
+        {% endif %}
 
-    <hr class="divider">
-
-    <p class="player-count" id="playerCount">No players yet</p>
-    <ul class="player-list" id="playerList"></ul>
-
-    <form method="POST" action="{{ url_for('index') }}" id="startForm">
-        <input type="hidden" name="name" id="selectedName" value="">
-        <input type="hidden" name="talent" id="selectedTalent" value="">
-        <button type="submit" class="start-btn" id="startBtn" disabled>Start Game</button>
+        <button type="submit" class="start-btn">Join the game</button>
     </form>
+
+    {% if participants %}
+    <hr class="divider">
+    <p class="player-count">Already joined? Tap your name to continue ({{ participants|length }} player{{ 's' if participants|length != 1 }})</p>
+    <ul class="player-list">
+        {% for p in participants %}
+        <li>
+            <form method="POST" action="{{ url_for('index') }}" style="width:100%; margin:0;">
+                <input type="hidden" name="name" value="{{ p.name }}">
+                <button type="submit" class="player-pick">{{ p.name }}</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
 </div>
 
-<script>
-// Players stored as objects: [{name: "...", talent: "..."}, ...]
-const players = JSON.parse(localStorage.getItem('gamePlayers') || '[]');
-const nameInput = document.getElementById('nameInput');
-const talentInput = document.getElementById('talentInput');
-const talentGroup = document.getElementById('talentGroup');
-const addBtn = document.getElementById('addBtn');
-const playerList = document.getElementById('playerList');
-const playerCount = document.getElementById('playerCount');
-const startBtn = document.getElementById('startBtn');
-const selectedName = document.getElementById('selectedName');
-const selectedTalent = document.getElementById('selectedTalent');
-
-// Show talent field when name is typed
-nameInput.addEventListener('input', () => {
-    talentGroup.style.display = nameInput.value.trim() ? 'block' : 'none';
-});
-
-function savePlayers() {
-    localStorage.setItem('gamePlayers', JSON.stringify(players));
-}
-
-function renderPlayers() {
-    playerList.innerHTML = '';
-    players.forEach((player, i) => {
-        const name = typeof player === 'string' ? player : player.name;
-        const talent = typeof player === 'string' ? '' : (player.talent || '');
-        const li = document.createElement('li');
-        li.innerHTML = `
-            <div>
-                <span class="player-name">${name}</span>
-                ${talent ? '<span style="display:block;font-size:12px;color:#888;margin-top:2px;">🎭 ' + talent + '</span>' : ''}
-            </div>
-            <button type="button" class="remove-btn" onclick="removePlayer(${i})">✕</button>
-        `;
-        li.style.cursor = 'pointer';
-        li.addEventListener('click', (e) => {
-            if (e.target.classList.contains('remove-btn')) return;
-            selectPlayer(name, talent);
-        });
-        playerList.appendChild(li);
-    });
-
-    if (players.length === 0) {
-        playerCount.textContent = 'No players yet';
-        startBtn.disabled = true;
-        selectedName.value = '';
-    } else {
-        playerCount.textContent = players.length + ' player' + (players.length > 1 ? 's' : '') + ' — tap a name to play';
-        startBtn.disabled = !selectedName.value;
+<style>
+    .player-pick {
+        width: 100%;
+        text-align: left;
+        background: none;
+        border: none;
+        font-size: 15px;
+        font-weight: bold;
+        color: #333;
+        cursor: pointer;
+        padding: 0;
     }
-}
-
-function selectPlayer(name, talent) {
-    selectedName.value = name;
-    selectedTalent.value = talent || '';
-    startBtn.disabled = false;
-    startBtn.textContent = 'Start Game as ' + name;
-
-    // Highlight selected
-    document.querySelectorAll('.player-list li').forEach(li => {
-        const playerName = li.querySelector('.player-name').textContent;
-        if (playerName === name) {
-            li.style.background = '#e8eaff';
-            li.style.borderLeft = '3px solid #667eea';
-        } else {
-            li.style.background = '#f8f9ff';
-            li.style.borderLeft = 'none';
-        }
-    });
-}
-
-function addPlayer() {
-    const name = nameInput.value.trim();
-    if (!name) return;
-    const exists = players.some(p => (typeof p === 'string' ? p : p.name) === name);
-    if (exists) {
-        nameInput.style.borderColor = '#d32f2f';
-        setTimeout(() => nameInput.style.borderColor = '#ddd', 1500);
-        return;
-    }
-    const talent = talentInput ? talentInput.value.trim() : '';
-    players.push({ name: name, talent: talent });
-    savePlayers();
-    nameInput.value = '';
-    if (talentInput) talentInput.value = '';
-    talentGroup.style.display = 'none';
-    nameInput.focus();
-    renderPlayers();
-    // Auto-select the newly added player
-    selectPlayer(name, talent);
-}
-
-function removePlayer(index) {
-    const removed = players[index];
-    const removedName = typeof removed === 'string' ? removed : removed.name;
-    players.splice(index, 1);
-    savePlayers();
-    if (selectedName.value === removedName) {
-        selectedName.value = '';
-        selectedTalent.value = '';
-        startBtn.disabled = true;
-        startBtn.textContent = 'Start Game';
-    }
-    renderPlayers();
-}
-
-addBtn.addEventListener('click', addPlayer);
-nameInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        addPlayer();
-    }
-});
-
-// Initial render
-renderPlayers();
-</script>
+</style>
 
 </body>
 </html>

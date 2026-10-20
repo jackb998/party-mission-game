@@ -262,7 +262,7 @@ button:active {
 <body>
 
 <div class="navbar">
-    <div class="navbar-left">🎮 Mission Game</div>
+    <div class="navbar-left">{{ event.icon }} {{ event.name }}</div>
     <div class="navbar-right">
         {% if 'missions' in game_features %}<a href="{{ url_for('index', name=name) }}" class="nav-btn">📋 Missions</a>{% endif %}
         {% if 'secret_talent' in game_features %}<a href="{{ url_for('secret_talent', name=name) }}" class="nav-btn">🎭 Secret Talent</a>{% endif %}
@@ -406,7 +406,7 @@ function autoSaveMission(missionId) {
     const peopleCheckboxes = document.querySelectorAll(`input[name="people_${missionId}"]:checked`);
     const people = Array.from(peopleCheckboxes).map(cb => cb.value);
     
-    fetch('/autosave_mission', {
+    fetch('{{ url_for('autosave_mission') }}', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

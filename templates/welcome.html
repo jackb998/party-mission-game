@@ -16,7 +16,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
+            overflow-x: hidden;
             position: relative;
             transition: background 0.8s ease;
         }
@@ -127,6 +127,65 @@
             border-color: #ffd700;
             background: rgba(255,215,0,0.2);
             box-shadow: 0 0 15px rgba(255,215,0,0.3);
+        }
+
+        /* Join / create panels */
+        .panel {
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 16px;
+            padding: 18px;
+            margin: 0 auto 22px auto;
+            max-width: 380px;
+            backdrop-filter: blur(6px);
+            opacity: 0;
+            animation: fadeInUp 1s ease-out 0.8s forwards;
+        }
+        .panel h3 {
+            color: white;
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+        .panel input[type="text"], .panel input[type="password"] {
+            width: 100%;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.9);
+            font-size: 16px;
+        }
+        .panel input.code-input {
+            text-align: center;
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        .panel .panel-btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            background: #ffd700;
+            color: #222;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .panel .hint {
+            color: rgba(255,255,255,0.7);
+            font-size: 12px;
+            margin: -4px 0 10px 0;
+            text-align: left;
+        }
+        .flash {
+            background: rgba(255, 82, 82, 0.9);
+            color: white;
+            padding: 10px 14px;
+            border-radius: 10px;
+            margin: 0 auto 18px auto;
+            max-width: 380px;
+            font-size: 14px;
         }
 
         /* Feature checkboxes */
@@ -298,35 +357,52 @@
     <h1 class="title">Mission Game</h1>
     <h2 class="subtitle" id="subtitle">Event & Game Night</h2>
 
+    {% with messages = get_flashed_messages() %}
+        {% for message in messages %}
+            <div class="flash">⚠️ {{ message }}</div>
+        {% endfor %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('join') }}" class="panel">
+        <h3>🔑 Join a game</h3>
+        <input type="text" name="code" class="code-input" placeholder="CODE" maxlength="12"
+               autocomplete="off" autocapitalize="characters" required>
+        <button type="submit" class="panel-btn">Join</button>
+    </form>
+
+    <p class="curated-by" style="margin-bottom: 14px;">— or create your own —</p>
+
     <div class="theme-selector">
-        <button class="theme-btn" data-theme="christmas" onclick="setTheme('christmas')">🎄 Christmas</button>
-        <button class="theme-btn" data-theme="birthday" onclick="setTheme('birthday')">🎂 Birthday</button>
-        <button class="theme-btn" data-theme="halloween" onclick="setTheme('halloween')">🎃 Halloween</button>
-        <button class="theme-btn active" data-theme="party" onclick="setTheme('party')">🎉 Party</button>
+        <button type="button" class="theme-btn" data-theme="christmas" onclick="setTheme('christmas')">🎄 Christmas</button>
+        <button type="button" class="theme-btn" data-theme="birthday" onclick="setTheme('birthday')">🎂 Birthday</button>
+        <button type="button" class="theme-btn" data-theme="halloween" onclick="setTheme('halloween')">🎃 Halloween</button>
+        <button type="button" class="theme-btn active" data-theme="party" onclick="setTheme('party')">🎉 Party</button>
     </div>
 
-    <form method="POST" action="{{ url_for('setup') }}" id="setupForm">
+    <form method="POST" action="{{ url_for('create_event') }}" id="setupForm">
         <input type="hidden" name="theme" id="themeInput" value="party">
+
+        <div class="panel" style="animation-delay: 0.9s;">
+            <h3>✨ Create a game</h3>
+            <input type="text" name="name" placeholder="Name of your game (e.g. Sara's 30th)" maxlength="60" autocomplete="off">
+            <input type="password" name="password" placeholder="Host password" minlength="4" autocomplete="new-password" required>
+            <p class="hint">You'll need this password to open the host dashboard.</p>
+        </div>
 
         <div class="feature-selector">
             <label>Select game modes:</label>
-            <div class="feature-option" onclick="toggleCheck('feat_missions', event)">
-                <input type="checkbox" name="features" value="missions" id="feat_missions" checked>
-                <span>📋 Individual Missions</span>
+            {% for key, label in features.items() %}
+            <div class="feature-option" onclick="toggleCheck('feat_{{ key }}', event)">
+                <input type="checkbox" name="features" value="{{ key }}" id="feat_{{ key }}"
+                       {% if key != 'secret_talent' %}checked{% endif %}>
+                <span>{% if key == 'missions' %}📋{% elif key == 'group_missions' %}👥{% else %}🎭{% endif %} {{ label }}</span>
             </div>
-            <div class="feature-option" onclick="toggleCheck('feat_group', event)">
-                <input type="checkbox" name="features" value="group_missions" id="feat_group" checked>
-                <span>👥 Group Missions</span>
-            </div>
-            <div class="feature-option" onclick="toggleCheck('feat_talent', event)">
-                <input type="checkbox" name="features" value="secret_talent" id="feat_talent">
-                <span>🎭 Secret Talent</span>
-            </div>
+            {% endfor %}
         </div>
 
         <p class="curated-by">Curated by <span>JB</span></p>
 
-        <button type="submit" class="continue-btn" id="continueBtn">Continue</button>
+        <button type="submit" class="continue-btn" id="continueBtn">Create game</button>
     </form>
 
     <div class="decorations" id="decorations">

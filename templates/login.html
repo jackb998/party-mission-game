@@ -123,20 +123,15 @@
 
     <form method="POST" action="{{ url_for('login') }}">
         <div class="form-group">
-            <label for="username">Username:</label>
-            <input type="text" id="username" name="username" required autofocus>
-        </div>
-        
-        <div class="form-group">
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
+            <label for="password">Host password for “{{ event.name }}”:</label>
+            <input type="password" id="password" name="password" required autofocus>
         </div>
         
         <button type="submit">Login</button>
     </form>
 
     <div class="home-link">
-        <a href="{{ url_for('index') }}">🏠 Back to Player Selection</a>
+        <a href="{{ url_for('index') }}">🏠 Back to the game</a>
     </div>
 </div>
 
