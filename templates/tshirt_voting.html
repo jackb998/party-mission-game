@@ -298,6 +298,7 @@ button:disabled {
 
         <div class="voting-box">
             <form method="POST" action="{{ url_for('submit_tshirt_vote') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="voter" value="{{ name }}">
 
                 <div class="form-group">
@@ -330,6 +331,7 @@ function saveVoteSelection() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRF-Token': '{{ csrf_token() }}',
             },
             body: JSON.stringify({
                 type: 'tshirt_vote',

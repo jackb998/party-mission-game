@@ -312,6 +312,34 @@ def inject_event():
             'game_theme': event['theme'], 'is_host': is_host()}
 
 
+def csrf_token():
+    """Per-session token that every POST must send back (form field or X-CSRF-Token header)."""
+    token = session.get('_csrf')
+    if not token:
+        token = secrets.token_hex(16)
+        session['_csrf'] = token
+        session.permanent = True
+    return token
+
+
+app.jinja_env.globals['csrf_token'] = csrf_token
+
+
+@app.before_request
+def protect_from_csrf():
+    if request.method not in ('POST', 'PUT', 'PATCH', 'DELETE'):
+        return
+    sent = request.form.get('csrf_token') or request.headers.get('X-CSRF-Token', '')
+    expected = session.get('_csrf', '')
+    if not expected or not secrets.compare_digest(sent.encode(), expected.encode()):
+        abort(400)
+
+
+@app.errorhandler(400)
+def bad_request(_):
+    return render_template('error.html', message="Your session expired or the request was not valid. Go back, reload the page and try again."), 400
+
+
 @app.errorhandler(404)
 def not_found(_):
     return render_template('error.html', message="We couldn't find that page or game."), 404
@@ -1045,7 +1073,7 @@ def erase(tables, participant):
     conn.close()
 
 
-@app.route('/e/<code>/admin/erase_all/<participant>')
+@app.route('/e/<code>/admin/erase_all/<participant>', methods=['POST'])
 @host_required
 def erase_all(participant):
     erase([('submissions', 'participant'), ('group_submissions', 'participant'),
@@ -1054,7 +1082,7 @@ def erase_all(participant):
     return redirect(url_for('dashboard'))
 
 
-@app.route('/e/<code>/admin/erase_individual/<participant>')
+@app.route('/e/<code>/admin/erase_individual/<participant>', methods=['POST'])
 @host_required
 def erase_individual(participant):
     erase([('submissions', 'participant')], participant)
@@ -1062,7 +1090,7 @@ def erase_individual(participant):
     return redirect(url_for('dashboard'))
 
 
-@app.route('/e/<code>/admin/erase_group/<participant>')
+@app.route('/e/<code>/admin/erase_group/<participant>', methods=['POST'])
 @host_required
 def erase_group(participant):
     erase([('group_submissions', 'participant')], participant)
@@ -1070,7 +1098,7 @@ def erase_group(participant):
     return redirect(url_for('dashboard'))
 
 
-@app.route('/e/<code>/admin/erase_talent/<participant>')
+@app.route('/e/<code>/admin/erase_talent/<participant>', methods=['POST'])
 @host_required
 def erase_talent(participant):
     erase([('talent_guesses', 'guesser')], participant)
@@ -1078,7 +1106,7 @@ def erase_talent(participant):
     return redirect(url_for('dashboard'))
 
 
-@app.route('/e/<code>/admin/erase_vote/<participant>')
+@app.route('/e/<code>/admin/erase_vote/<participant>', methods=['POST'])
 @host_required
 def erase_vote(participant):
     erase([('tshirt_votes', 'voter')], participant)
@@ -1086,7 +1114,7 @@ def erase_vote(participant):
     return redirect(url_for('dashboard'))
 
 
-@app.route('/e/<code>/admin/erase_all_data')
+@app.route('/e/<code>/admin/erase_all_data', methods=['POST'])
 @host_required
 def erase_all_data():
     conn = get_db_conn()
@@ -1179,7 +1207,7 @@ def leaderboard():
                            quiz_questions=TIEBREAK_QUESTIONS)
 
 
-@app.route('/e/<code>/mark_winner/<participant>')
+@app.route('/e/<code>/mark_winner/<participant>', methods=['POST'])
 @host_required
 def mark_winner(participant):
     sset('manual_winner', participant)
@@ -1187,7 +1215,7 @@ def mark_winner(participant):
     return redirect(url_for('leaderboard'))
 
 
-@app.route('/e/<code>/clear_winner')
+@app.route('/e/<code>/clear_winner', methods=['POST'])
 @host_required
 def clear_winner():
     spop('manual_winner')
