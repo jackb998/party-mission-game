@@ -364,6 +364,7 @@
     {% endwith %}
 
     <form method="POST" action="{{ url_for('join') }}" class="panel">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <h3>🔑 Join a game</h3>
         <input type="text" name="code" class="code-input" placeholder="CODE" maxlength="12"
                autocomplete="off" autocapitalize="characters" required>
@@ -380,6 +381,7 @@
     </div>
 
     <form method="POST" action="{{ url_for('create_event') }}" id="setupForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="theme" id="themeInput" value="party">
 
         <div class="panel" style="animation-delay: 0.9s;">

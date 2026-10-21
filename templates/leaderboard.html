@@ -325,7 +325,7 @@
     <div style="background: linear-gradient(135deg, #4caf50 0%, #45a049 100%); padding: 20px; border-radius: 15px; margin: 20px 0; text-align: center; box-shadow: 0 5px 20px rgba(76,175,80,0.3);">
         <h3 style="color: white; margin: 0 0 10px 0;">👑 Official Winner Selected</h3>
         <p style="color: white; font-size: 24px; font-weight: bold; margin: 0;">{{ manual_winner }}</p>
-        <a href="{{ url_for('clear_winner') }}" style="display: inline-block; margin-top: 15px; color: white; text-decoration: underline; font-size: 14px;">Clear winner selection</a>
+        <form method="POST" action="{{ url_for('clear_winner') }}" style="margin:0;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" style="display: inline-block; margin-top: 15px; color: white; text-decoration: underline; font-size: 14px; background:none; border:none; cursor:pointer; font-family:inherit;">Clear winner selection</button></form>
     </div>
     {% endif %}
 
@@ -570,9 +570,9 @@ new Chart(tshirtCtx, {
                 <p style="color: #666; margin-bottom: 20px;">Choose the participant who answered correctly first:</p>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
                     {% for participant in tied_participants %}
-                    <a href="{{ url_for('mark_winner', participant=participant) }}" style="display: block; background: linear-gradient(135deg, #ffd700 0%, #ffb300 100%); color: #333; text-decoration: none; padding: 15px 25px; border-radius: 10px; font-size: 18px; font-weight: bold; transition: transform 0.2s; box-shadow: 0 4px 15px rgba(255,193,7,0.3);" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+                    <form method="POST" action="{{ url_for('mark_winner', participant=participant) }}" style="margin:0;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" style="display: block; background: linear-gradient(135deg, #ffd700 0%, #ffb300 100%); color: #333; text-decoration: none; padding: 15px 25px; border-radius: 10px; font-size: 18px; font-weight: bold; transition: transform 0.2s; box-shadow: 0 4px 15px rgba(255,193,7,0.3); width:100%; border:none; cursor:pointer; font-family:inherit; text-align:center;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
                         🏆 {{ participant }}
-                    </a>
+                    </button></form>
                     {% endfor %}
                 </div>
             </div>

@@ -189,6 +189,7 @@
     </div>
     {% else %}
     <form method="POST" action="{{ url_for('group_missions') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="name" value="{{ name }}">
         
         <div class="form-group">

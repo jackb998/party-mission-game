@@ -229,6 +229,7 @@
     {% endwith %}
 
     <form method="POST" action="{{ url_for('index') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
             <label for="nameInput">Enter your name to join:</label>
             <input type="text" id="nameInput" name="name" placeholder="Your name..." maxlength="40"
@@ -253,6 +254,7 @@
         {% for p in participants %}
         <li>
             <form method="POST" action="{{ url_for('index') }}" style="width:100%; margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="name" value="{{ p.name }}">
                 <button type="submit" class="player-pick">{{ p.name }}</button>
             </form>
