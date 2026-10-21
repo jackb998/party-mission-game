@@ -9,7 +9,7 @@ Perfect for dinners, birthdays, Halloween parties, team events, and more.
 
 ## ▶️ Play now
 
-**👉 [Open the game](https://allseas-christmas-game.onrender.com)**
+**👉 [Open the game](https://party-mission-game.onrender.com)**
 
 *The first load can take up to a minute while the server wakes up.*
 
